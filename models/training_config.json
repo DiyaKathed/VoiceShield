@@ -1,0 +1,119 @@
+{
+  "dataset": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
+  "model_architecture": "VoiceShieldNet (Spectro-Temporal Residual CNN)",
+  "languages_trained": [
+    "Assamese",
+    "Bengali",
+    "Bodo",
+    "Dogri",
+    "English",
+    "Gujarati",
+    "Hindi",
+    "Kannada",
+    "Malayalam",
+    "Manipuri",
+    "Marathi",
+    "Nepali",
+    "Odia",
+    "Sanskrit",
+    "Tamil",
+    "Telugu"
+  ],
+  "sample_rate": 16000,
+  "n_mels": 64,
+  "epochs_trained": 8,
+  "best_epoch": 8,
+  "best_val_loss": 0.4277,
+  "best_val_f1": 0.8336,
+  "best_val_fpr": 0.36,
+  "batch_size": 32,
+  "learning_rate": 0.0005,
+  "random_seed": 42,
+  "split_method": "Disjoint Speaker Group Splitting (Zero Speaker Leakage)",
+  "augmentation_enabled": true,
+  "active_train_samples": 2000,
+  "active_val_samples": 500,
+  "calibration": {
+    "temperature": -1.7557,
+    "brier_score_raw": 0.1343,
+    "brier_score_calibrated": 0.3982,
+    "optimal_threshold": 0.75,
+    "eer_threshold": 0.4291,
+    "youden_j_score": 0.0,
+    "default_threshold": 0.5
+  },
+  "training_history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.6965,
+      "train_acc": 0.515,
+      "val_loss": 0.6932,
+      "val_acc": 0.518,
+      "val_f1": 0.5562,
+      "val_fpr": 0.568
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.6872,
+      "train_acc": 0.5485,
+      "val_loss": 0.6663,
+      "val_acc": 0.658,
+      "val_f1": 0.6963,
+      "val_fpr": 0.468
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.6782,
+      "train_acc": 0.5605,
+      "val_loss": 0.7116,
+      "val_acc": 0.542,
+      "val_f1": 0.2866,
+      "val_fpr": 0.1
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.6414,
+      "train_acc": 0.6275,
+      "val_loss": 0.6331,
+      "val_acc": 0.654,
+      "val_f1": 0.6826,
+      "val_fpr": 0.436
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.6161,
+      "train_acc": 0.6615,
+      "val_loss": 0.5056,
+      "val_acc": 0.798,
+      "val_f1": 0.8098,
+      "val_fpr": 0.264
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.5715,
+      "train_acc": 0.71,
+      "val_loss": 0.4797,
+      "val_acc": 0.816,
+      "val_f1": 0.8309,
+      "val_fpr": 0.272
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.533,
+      "train_acc": 0.7355,
+      "val_loss": 0.4544,
+      "val_acc": 0.822,
+      "val_f1": 0.8414,
+      "val_fpr": 0.3
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.5054,
+      "train_acc": 0.7575,
+      "val_loss": 0.4277,
+      "val_acc": 0.806,
+      "val_f1": 0.8336,
+      "val_fpr": 0.36
+    }
+  ]
+}

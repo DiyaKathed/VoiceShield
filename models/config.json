@@ -1,0 +1,10 @@
+{
+  "model_name": "VoiceShieldNet",
+  "architecture": "Spectro-Temporal CNN with Residuals & Delta Features",
+  "best_epoch": 18,
+  "best_val_loss": 0.3859,
+  "target_sr": 16000,
+  "n_mels": 64,
+  "hop_length": 512,
+  "chunk_duration_sec": 1.5
+}

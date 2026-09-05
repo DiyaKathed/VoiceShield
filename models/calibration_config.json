@@ -1,0 +1,9 @@
+{
+  "temperature": 0.2374,
+  "brier_score_raw": 0.0817,
+  "brier_score_calibrated": 0.0426,
+  "optimal_threshold": 0.75,
+  "eer_threshold": 0.8308,
+  "youden_j_score": 0.92,
+  "default_threshold": 0.5
+}

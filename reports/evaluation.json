@@ -1,0 +1,306 @@
+{
+  "dataset": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
+  "model_path": "/Users/diya/Desktop/SIH/models/voiceshield_indictts_best.pt",
+  "calibration": {
+    "temperature": 0.2374,
+    "optimal_threshold": 0.75
+  },
+  "overall": {
+    "num_test_samples": 400,
+    "real_samples": 189,
+    "ai_samples": 211,
+    "accuracy": 0.8675,
+    "precision": 0.816,
+    "recall": 0.9668,
+    "f1_score": 0.885,
+    "false_positive_rate": 0.2434,
+    "false_negative_rate": 0.0332,
+    "roc_auc": 0.9628,
+    "eer": 0.1074,
+    "eer_threshold": 0.8993,
+    "confusion_matrix": {
+      "true_negatives": 143,
+      "false_positives": 46,
+      "false_negatives": 7,
+      "true_positives": 204
+    }
+  },
+  "real_world_human_eval": {
+    "total_files": 9,
+    "false_positives": 2,
+    "false_positive_rate": 0.2222,
+    "files": [
+      {
+        "file": "indic_hindi_genuine.wav",
+        "ai_prob": 0.8728,
+        "classified_as_ai": true
+      },
+      {
+        "file": "indic_marathi_genuine.wav",
+        "ai_prob": 0.0,
+        "classified_as_ai": false
+      },
+      {
+        "file": "indic_tamil_genuine.wav",
+        "ai_prob": 0.1323,
+        "classified_as_ai": false
+      },
+      {
+        "file": "real_human_assamese_ASM_F_HAPPY_00246.wav",
+        "ai_prob": 0.9573,
+        "classified_as_ai": true
+      },
+      {
+        "file": "real_human_bengali_BEN_F_ANGER_00422.wav",
+        "ai_prob": 0.0,
+        "classified_as_ai": false
+      },
+      {
+        "file": "real_human_gujarati_train_gujaratifemale_02325.wav",
+        "ai_prob": 0.1785,
+        "classified_as_ai": false
+      },
+      {
+        "file": "real_human_kannada_KAN_F_INDIC_00273.wav",
+        "ai_prob": 0.0,
+        "classified_as_ai": false
+      },
+      {
+        "file": "real_human_malayalam_MAL_F_ANGER_00421.wav",
+        "ai_prob": 0.0,
+        "classified_as_ai": false
+      },
+      {
+        "file": "real_human_telugu_te_f_finance_01382.wav",
+        "ai_prob": 0.0,
+        "classified_as_ai": false
+      }
+    ]
+  },
+  "by_language": {
+    "Assamese": {
+      "samples": 47,
+      "real_samples": 19,
+      "ai_samples": 28,
+      "accuracy": 0.9149,
+      "precision": 0.9286,
+      "recall": 0.9286,
+      "f1_score": 0.9286,
+      "false_positive_rate": 0.1053,
+      "false_negative_rate": 0.0714,
+      "roc_auc": 0.9774,
+      "eer": 0.0705,
+      "sufficient_test_samples": true
+    },
+    "Bengali": {
+      "samples": 32,
+      "real_samples": 16,
+      "ai_samples": 16,
+      "accuracy": 0.875,
+      "precision": 0.8,
+      "recall": 1.0,
+      "f1_score": 0.8889,
+      "false_positive_rate": 0.25,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "sufficient_test_samples": true
+    },
+    "Bodo": {
+      "samples": 30,
+      "real_samples": 15,
+      "ai_samples": 15,
+      "accuracy": 0.8667,
+      "precision": 0.8667,
+      "recall": 0.8667,
+      "f1_score": 0.8667,
+      "false_positive_rate": 0.1333,
+      "false_negative_rate": 0.1333,
+      "roc_auc": 0.9733,
+      "eer": 0.1333,
+      "sufficient_test_samples": true
+    },
+    "Dogri": {
+      "samples": 29,
+      "real_samples": 11,
+      "ai_samples": 18,
+      "accuracy": 0.9655,
+      "precision": 0.9474,
+      "recall": 1.0,
+      "f1_score": 0.973,
+      "false_positive_rate": 0.0909,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.9949,
+      "eer": 0.0732,
+      "sufficient_test_samples": true
+    },
+    "English": {
+      "samples": 7,
+      "real_samples": 3,
+      "ai_samples": 4,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "sufficient_test_samples": false
+    },
+    "Gujarati": {
+      "samples": 24,
+      "real_samples": 15,
+      "ai_samples": 9,
+      "accuracy": 0.6667,
+      "precision": 0.5333,
+      "recall": 0.8889,
+      "f1_score": 0.6667,
+      "false_positive_rate": 0.4667,
+      "false_negative_rate": 0.1111,
+      "roc_auc": 0.8667,
+      "eer": 0.1778,
+      "sufficient_test_samples": true
+    },
+    "Hindi": {
+      "samples": 41,
+      "real_samples": 20,
+      "ai_samples": 21,
+      "accuracy": 0.6098,
+      "precision": 0.5676,
+      "recall": 1.0,
+      "f1_score": 0.7241,
+      "false_positive_rate": 0.8,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.8524,
+      "eer": 0.244,
+      "sufficient_test_samples": true
+    },
+    "Kannada": {
+      "samples": 21,
+      "real_samples": 14,
+      "ai_samples": 7,
+      "accuracy": 0.9048,
+      "precision": 0.7778,
+      "recall": 1.0,
+      "f1_score": 0.875,
+      "false_positive_rate": 0.1429,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.9592,
+      "eer": 0.1429,
+      "sufficient_test_samples": true
+    },
+    "Malayalam": {
+      "samples": 27,
+      "real_samples": 15,
+      "ai_samples": 12,
+      "accuracy": 0.8519,
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1_score": 0.8571,
+      "false_positive_rate": 0.2667,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.9722,
+      "eer": 0.15,
+      "sufficient_test_samples": true
+    },
+    "Manipuri": {
+      "samples": 31,
+      "real_samples": 15,
+      "ai_samples": 16,
+      "accuracy": 0.871,
+      "precision": 0.8333,
+      "recall": 0.9375,
+      "f1_score": 0.8824,
+      "false_positive_rate": 0.2,
+      "false_negative_rate": 0.0625,
+      "roc_auc": 0.975,
+      "eer": 0.1292,
+      "sufficient_test_samples": true
+    },
+    "Marathi": {
+      "samples": 25,
+      "real_samples": 10,
+      "ai_samples": 15,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "sufficient_test_samples": true
+    },
+    "Nepali": {
+      "samples": 4,
+      "real_samples": 3,
+      "ai_samples": 1,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "sufficient_test_samples": false
+    },
+    "Odia": {
+      "samples": 17,
+      "real_samples": 6,
+      "ai_samples": 11,
+      "accuracy": 0.9412,
+      "precision": 0.9167,
+      "recall": 1.0,
+      "f1_score": 0.9565,
+      "false_positive_rate": 0.1667,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.9848,
+      "eer": 0.1288,
+      "sufficient_test_samples": true
+    },
+    "Sanskrit": {
+      "samples": 5,
+      "real_samples": 3,
+      "ai_samples": 2,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "roc_auc": 1.0,
+      "eer": 0.0,
+      "sufficient_test_samples": false
+    },
+    "Tamil": {
+      "samples": 19,
+      "real_samples": 8,
+      "ai_samples": 11,
+      "accuracy": 0.8947,
+      "precision": 0.9091,
+      "recall": 0.9091,
+      "f1_score": 0.9091,
+      "false_positive_rate": 0.125,
+      "false_negative_rate": 0.0909,
+      "roc_auc": 0.9659,
+      "eer": 0.0625,
+      "sufficient_test_samples": true
+    },
+    "Telugu": {
+      "samples": 41,
+      "real_samples": 16,
+      "ai_samples": 25,
+      "accuracy": 0.9268,
+      "precision": 0.8929,
+      "recall": 1.0,
+      "f1_score": 0.9434,
+      "false_positive_rate": 0.1875,
+      "false_negative_rate": 0.0,
+      "roc_auc": 0.98,
+      "eer": 0.0712,
+      "sufficient_test_samples": true
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "VoiceShieldNet (ResNet)": {
+    "model_name": "VoiceShieldNet (ResNet)",
+    "accuracy": 0.8675,
+    "precision": 0.8155,
+    "recall": 0.95,
+    "f1_score": 0.8776,
+    "roc_auc": 0.9523,
+    "eer": 0.1275,
+    "false_positive_rate": 0.215,
+    "false_negative_rate": 0.05,
+    "confusion_matrix": {
+      "true_negatives_human": 157,
+      "false_positives_human_as_ai": 43,
+      "false_negatives_ai_as_human": 10,
+      "true_positives_ai": 190
+    },
+    "probability_distributions": {
+      "human_mean_ai_prob": 0.2957,
+      "human_median_ai_prob": 0.0849,
+      "ai_mean_ai_prob": 0.9435,
+      "ai_median_ai_prob": 0.984
+    },
+    "operating_parameters": {
+      "calibrated_temperature": 0.2374,
+      "frozen_operating_threshold": 0.75
+    }
+  },
+  "Baseline CNN": {
+    "model_name": "Baseline CNN",
+    "accuracy": 0.815,
+    "precision": 0.8247,
+    "recall": 0.8,
+    "f1_score": 0.8122,
+    "roc_auc": 0.896,
+    "eer": 0.18,
+    "false_positive_rate": 0.17,
+    "false_negative_rate": 0.2,
+    "confusion_matrix": {
+      "true_negatives_human": 166,
+      "false_positives_human_as_ai": 34,
+      "false_negatives_ai_as_human": 40,
+      "true_positives_ai": 160
+    },
+    "probability_distributions": {
+      "human_mean_ai_prob": 0.4573,
+      "human_median_ai_prob": 0.4557,
+      "ai_mean_ai_prob": 0.7618,
+      "ai_median_ai_prob": 0.7749
+    },
+    "operating_parameters": {
+      "calibrated_temperature": 0.6019,
+      "frozen_operating_threshold": 0.6832
+    }
+  },
+  "AASIST (Graph Attention)": {
+    "model_name": "AASIST (Graph Attention)",
+    "accuracy": 0.855,
+    "precision": 0.8318,
+    "recall": 0.89,
+    "f1_score": 0.8599,
+    "roc_auc": 0.9451,
+    "eer": 0.1375,
+    "false_positive_rate": 0.18,
+    "false_negative_rate": 0.11,
+    "confusion_matrix": {
+      "true_negatives_human": 164,
+      "false_positives_human_as_ai": 36,
+      "false_negatives_ai_as_human": 22,
+      "true_positives_ai": 178
+    },
+    "probability_distributions": {
+      "human_mean_ai_prob": 0.2589,
+      "human_median_ai_prob": 0.138,
+      "ai_mean_ai_prob": 0.8351,
+      "ai_median_ai_prob": 0.9037
+    },
+    "operating_parameters": {
+      "calibrated_temperature": 0.7155,
+      "frozen_operating_threshold": 0.5482
+    }
+  },
+  "W2V2-AASIST": {
+    "status": "Evaluated as computationally prohibitive on local CPU/MPS environment (requires 1.2GB XLS-R checkpoint + 16GB VRAM); architectural fallback gracefully handled via AASIST SincNet filterbank."
+  }
+}
