@@ -4,3 +4,29 @@ __pycache__/
 .env
 .DS_Store
 dataindictts/
+
+# Dataset - keep locally, don't upload to GitHub
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment variables
+.env
+.env.*
+
+# Debug audio
+debug_audio/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Python cache
+.pytest_cache/
+
+# macOS
+.DS_Store
