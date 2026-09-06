@@ -144,12 +144,37 @@ def get_model_info():
 
 
 @app.get("/api/evaluation-metrics")
+@app.get("/api/metrics")
+@app.get("/metrics")
 def get_evaluation_metrics():
     """Returns authentic test evaluation metrics calculated from unseen test split."""
     if METRICS_PATH.exists():
         with open(METRICS_PATH, "r") as f:
             metrics = json.load(f)
-        return metrics
+        
+        result = dict(metrics)
+        # Flatten overall fields into root level for frontend components
+        overall = metrics.get("overall", {})
+        if isinstance(overall, dict):
+            for k, v in overall.items():
+                if k not in result:
+                    result[k] = v
+        
+        # Ensure confusion matrix supports both naming styles
+        cm = result.get("confusion_matrix", {})
+        if isinstance(cm, dict):
+            cm_normalized = {
+                "true_negatives": cm.get("true_negatives_human", cm.get("true_negatives", 0)),
+                "false_positives": cm.get("false_positives_ai_alarm", cm.get("false_positives", 0)),
+                "false_negatives": cm.get("false_negatives_missed_ai", cm.get("false_negatives", 0)),
+                "true_positives": cm.get("true_positives_ai_detected", cm.get("true_positives", 0)),
+                **cm
+            }
+            result["confusion_matrix"] = cm_normalized
+            if "overall" in result and isinstance(result["overall"], dict):
+                result["overall"]["confusion_matrix"] = cm_normalized
+
+        return result
     return {"error": "Evaluation metrics not found. Run scripts/evaluation.py."}
 
 
@@ -303,7 +328,8 @@ async def analyze_audio(
     caller_role: Optional[str] = Form("Chief Executive Officer"),
     amount: Optional[float] = Form(75000.0),
     urgency: Optional[str] = Form("Immediate"),
-    speaker_verification: Optional[str] = Form("Unregistered / Unknown")
+    speaker_verification: Optional[str] = Form("Unregistered / Unknown"),
+    is_live_recording: Optional[str] = Form(None)
 ):
     """
     Main Deepfake Detection Endpoint:
@@ -326,6 +352,12 @@ async def analyze_audio(
             detail="Unsupported audio format. Please upload MP3 or WAV."
         )
 
+    # Determine if this stream is a live microphone recording
+    is_mic = (
+        (is_live_recording is not None and str(is_live_recording).lower() in ("true", "1", "yes"))
+        or filename.startswith("live_recording")
+    )
+
     try:
         content = await file.read()
         if len(content) == 0:
@@ -340,7 +372,9 @@ async def analyze_audio(
             raise HTTPException(status_code=400, detail=str(re))
 
         # Check speech energy and perform sliding-window analysis
-        chunk_analysis = state["chunk_analyzer"].analyze_audio_stream(audio, sr)
+        chunk_analysis = state["chunk_analyzer"].analyze_audio_stream(
+            audio, sr, is_live_recording=is_mic
+        )
 
         audio_format = ext.replace(".", "") if ext else "wav"
         if not audio_format or audio_format == "blob":

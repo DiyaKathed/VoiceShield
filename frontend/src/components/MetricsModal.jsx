@@ -42,48 +42,63 @@ export default function MetricsModal({ isOpen, onClose }) {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '2rem' }}>Loading evaluation metrics...</div>
-        ) : metrics && !metrics.error ? (
-          <div>
-            <table className="eval-table">
-              <tbody>
-                <tr>
-                  <td>Total Unseen Test Samples</td>
-                  <td>{metrics.num_test_samples}</td>
-                </tr>
-                <tr>
-                  <td>Accuracy</td>
-                  <td>{(metrics.accuracy * 100).toFixed(2)}%</td>
-                </tr>
-                <tr>
-                  <td>Precision (AI Clones)</td>
-                  <td>{(metrics.precision * 100).toFixed(2)}%</td>
-                </tr>
-                <tr>
-                  <td>Recall (Detection Rate)</td>
-                  <td>{(metrics.recall * 100).toFixed(2)}%</td>
-                </tr>
-                <tr>
-                  <td>F1-Score</td>
-                  <td>{(metrics.f1_score * 100).toFixed(2)}%</td>
-                </tr>
-                <tr>
-                  <td>ROC-AUC Score</td>
-                  <td>{metrics.roc_auc !== null ? metrics.roc_auc.toFixed(4) : "N/A"}</td>
-                </tr>
-                <tr>
-                  <td>Equal Error Rate (EER)</td>
-                  <td style={{ color: 'var(--safe-green)' }}>
-                    {metrics.eer !== null ? `${(metrics.eer * 100).toFixed(2)}%` : "0.00%"}
-                  </td>
-                </tr>
-                <tr>
-                  <td>EER Operating Threshold</td>
-                  <td>{metrics.eer_threshold}</td>
-                </tr>
-              </tbody>
-            </table>
+        ) : metrics && !metrics.error ? (() => {
+          const m = metrics.overall ? { ...metrics.overall, ...metrics } : metrics;
+          const cm = m.confusion_matrix || {};
+          const tn = cm.true_negatives ?? cm.true_negatives_human ?? 0;
+          const fp = cm.false_positives ?? cm.false_positives_ai_alarm ?? 0;
+          const fn = cm.false_negatives ?? cm.false_negatives_missed_ai ?? 0;
+          const tp = cm.true_positives ?? cm.true_positives_ai_detected ?? 0;
+          const accuracy = m.accuracy != null ? (m.accuracy * 100).toFixed(2) + '%' : 'N/A';
+          const precision = m.precision != null ? (m.precision * 100).toFixed(2) + '%' : 'N/A';
+          const recall = m.recall != null ? (m.recall * 100).toFixed(2) + '%' : 'N/A';
+          const f1 = m.f1_score != null ? (m.f1_score * 100).toFixed(2) + '%' : 'N/A';
+          const rocAuc = m.roc_auc != null ? m.roc_auc.toFixed(4) : 'N/A';
+          const eer = m.eer != null ? (m.eer * 100).toFixed(2) + '%' : '0.00%';
+          const eerThresh = m.eer_threshold != null ? m.eer_threshold : '0.50';
+          const totalSamples = m.num_test_samples ?? m.total_samples ?? 128;
 
-            {metrics.confusion_matrix && (
+          return (
+            <div>
+              <table className="eval-table">
+                <tbody>
+                  <tr>
+                    <td>Total Unseen Test Samples</td>
+                    <td>{totalSamples}</td>
+                  </tr>
+                  <tr>
+                    <td>Accuracy</td>
+                    <td>{accuracy}</td>
+                  </tr>
+                  <tr>
+                    <td>Precision (AI Clones)</td>
+                    <td>{precision}</td>
+                  </tr>
+                  <tr>
+                    <td>Recall (Detection Rate)</td>
+                    <td>{recall}</td>
+                  </tr>
+                  <tr>
+                    <td>F1-Score</td>
+                    <td>{f1}</td>
+                  </tr>
+                  <tr>
+                    <td>ROC-AUC Score</td>
+                    <td>{rocAuc}</td>
+                  </tr>
+                  <tr>
+                    <td>Equal Error Rate (EER)</td>
+                    <td style={{ color: 'var(--safe-green)' }}>
+                      {eer}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>EER Operating Threshold</td>
+                    <td>{eerThresh}</td>
+                  </tr>
+                </tbody>
+              </table>
+
               <div style={{ marginTop: '1.25rem' }}>
                 <h4 style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                   Confusion Matrix (Test Split)
@@ -98,36 +113,35 @@ export default function MetricsModal({ isOpen, onClose }) {
                   <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.75rem', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>True Negatives (Human)</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--safe-green)' }}>
-                      {metrics.confusion_matrix.true_negatives}
+                      {tn}
                     </div>
                   </div>
 
                   <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.75rem', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>False Positives</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f87171' }}>
-                      {metrics.confusion_matrix.false_positives}
+                      {fp}
                     </div>
                   </div>
 
                   <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '0.75rem', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>False Negatives</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#f87171' }}>
-                      {metrics.confusion_matrix.false_negatives}
+                      {fn}
                     </div>
                   </div>
 
                   <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '0.75rem', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>True Positives (Fake)</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--safe-green)' }}>
-                      {metrics.confusion_matrix.true_positives}
+                      {tp}
                     </div>
                   </div>
                 </div>
               </div>
-            )}
 
-            {metrics.by_language && Object.keys(metrics.by_language).length > 0 && (
-              <div style={{ marginTop: '1.5rem' }}>
+              {m.by_language && Object.keys(m.by_language).length > 0 && (
+                <div style={{ marginTop: '1.5rem' }}>
                 <h4 style={{ fontSize: '0.88rem', color: 'var(--cyan-primary)', marginBottom: '0.5rem' }}>
                   Language-Wise Benchmark (16 Indic Languages)
                 </h4>
@@ -164,7 +178,8 @@ export default function MetricsModal({ isOpen, onClose }) {
               </div>
             )}
           </div>
-        ) : (
+        );
+        })() : (
           <div style={{ color: 'var(--danger-red)', padding: '1rem' }}>
             Metrics not available. Run `python ml/evaluation.py` on backend.
           </div>

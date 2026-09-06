@@ -80,19 +80,33 @@ export default function AudioInputStage({
     setSelectedDemoId(null);
   };
 
-  // Helper to convert recorded audio blob to true 16-bit PCM WAV
+  // Helper to convert recorded audio blob to true 16kHz 16-bit mono PCM WAV
   const convertBlobToWav = async (blob) => {
     try {
       const arrayBuffer = await blob.arrayBuffer();
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      audioCtx.close().catch(() => {});
+
+      // Resample to 16,000 Hz mono using native OfflineAudioContext
+      const targetSampleRate = 16000;
+      const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(
+        1,
+        Math.max(1, Math.ceil(decodedBuffer.duration * targetSampleRate)),
+        targetSampleRate
+      );
+      const source = offlineCtx.createBufferSource();
+      source.buffer = decodedBuffer;
+      source.connect(offlineCtx.destination);
+      source.start(0);
+      const resampledBuffer = await offlineCtx.startRendering();
 
       const numChannels = 1;
-      const sampleRate = audioBuffer.sampleRate;
+      const sampleRate = targetSampleRate;
       const bitDepth = 16;
       const bytesPerSample = bitDepth / 8;
       const blockAlign = numChannels * bytesPerSample;
-      const channelData = audioBuffer.getChannelData(0);
+      const channelData = resampledBuffer.getChannelData(0);
       const dataLength = channelData.length * bytesPerSample;
       const bufferLength = 44 + dataLength;
 
@@ -137,9 +151,26 @@ export default function AudioInputStage({
   const startRecording = async () => {
     audioChunksRef.current = [];
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream;
+      try {
+        // Request natural acoustic microphone capture without destructive WebRTC noise-gate artifacts
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          }
+        });
+      } catch (e) {
+        console.warn("High-fidelity constraints fallback:", e);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
+      const mimeType = mediaRecorder.mimeType || 'audio/webm';
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -148,7 +179,7 @@ export default function AudioInputStage({
       };
 
       mediaRecorder.onstop = async () => {
-        const rawBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const rawBlob = new Blob(audioChunksRef.current, { type: mimeType });
         const wavBlob = await convertBlobToWav(rawBlob);
         const url = URL.createObjectURL(wavBlob);
         setCurrentAudioBlob(wavBlob);

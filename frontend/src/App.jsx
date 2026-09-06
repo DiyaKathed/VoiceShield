@@ -70,6 +70,11 @@ export default function App() {
 
     setIsLoading(true);
     try {
+      const isLiveRecording = Boolean(
+        filenameToSend.startsWith('live_recording') ||
+        (blobToSend && blobToSend.isLive)
+      );
+
       const formData = new FormData();
       formData.append('file', blobToSend, filenameToSend);
       formData.append('caller_name', transactionContext.caller_name || "Unknown");
@@ -77,6 +82,7 @@ export default function App() {
       formData.append('amount', (transactionContext.amount || 0).toString());
       formData.append('urgency', transactionContext.urgency || "Normal");
       formData.append('speaker_verification', transactionContext.speaker_verification || "Unregistered");
+      formData.append('is_live_recording', isLiveRecording ? 'true' : 'false');
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
