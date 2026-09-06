@@ -1,11 +1,11 @@
 """
-VoiceShield IndicTTS Evaluation Pipeline
-=========================================
-Rigorously evaluates the trained VoiceShieldNet on the held-out IndicTTS test split.
+VoiceShield Evaluation Pipeline
+===============================
+Rigorously evaluates the trained VoiceShieldNet on the held-out Kaggle test split.
 Calculates authentic metrics:
 - Overall: Accuracy, Precision, Recall, F1-Score, ROC-AUC, EER, Confusion Matrix
-- Language-wise breakdown: Independent evaluation across all 16 Indian languages
 Saves full report to reports/evaluation.json and models/eval_metrics.json.
+Generates evaluation visual plots (ROC Curve, Confusion Matrix).
 """
 
 import os
@@ -16,6 +16,9 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from pathlib import Path
 from sklearn.metrics import (
     accuracy_score,
@@ -33,7 +36,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.features import AudioFeatureExtractor
 from ml.model import VoiceShieldNet
-from ml.dataset import IndicTTSDataset
+from ml.dataset import VoiceShieldDataset
 
 
 MODELS_DIR = BASE_DIR / "models"
@@ -56,13 +59,13 @@ def compute_eer(y_true: np.ndarray, y_scores: np.ndarray):
 
 
 def evaluate_test_split(
-    model_path: str = str(MODELS_DIR / "voiceshield_indictts_best.pt"),
+    model_path: str = str(MODELS_DIR / "voiceshield_model.pt"),
     test_manifest: str = str(SPLITS_DIR / "test.csv"),
     output_report: str = str(REPORTS_DIR / "evaluation.json"),
     max_samples: int = None
 ):
     print("=" * 75, flush=True)
-    print("VoiceShield: Rigorous IndicTTS Test Set Evaluation & Language Analysis", flush=True)
+    print("VoiceShield: Rigorous Test Set Evaluation on Kaggle Deepfake Dataset", flush=True)
     print("=" * 75, flush=True)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -100,21 +103,21 @@ def evaluate_test_split(
 
     # Load test dataset
     test_df = pd.read_csv(test_manifest)
-    print(f"[+] Found {len(test_df):,} held-out test samples across {test_df['language'].nunique()} Indic languages", flush=True)
+    print(f"[+] Found {len(test_df):,} held-out test samples", flush=True)
 
     feature_extractor = AudioFeatureExtractor()
-    test_dataset = IndicTTSDataset(
+    test_dataset = VoiceShieldDataset(
         test_df,
         feature_extractor=feature_extractor,
         augment=False,
         max_samples=max_samples
     )
+    test_dataset.preload_audio()
     test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
     y_true = []
     y_probs = []
     y_preds = []
-    languages = test_dataset.df['language'].tolist()
 
     print(f"[+] Running inference across {len(test_dataset)} test samples...", flush=True)
     with torch.no_grad():
@@ -135,7 +138,6 @@ def evaluate_test_split(
     y_true = np.array(y_true)
     y_probs = np.array(y_probs)
     y_preds = np.array(y_preds)
-    languages = np.array(languages[:len(y_true)])
 
     # 1. Overall Metrics
     acc = float(accuracy_score(y_true, y_preds))
@@ -153,82 +155,11 @@ def evaluate_test_split(
     tn, fp, fn, tp = cm.ravel() if cm.shape == (2, 2) else (0, 0, 0, 0)
     fpr = float(fp / max(1, fp + tn))
     fnr = float(fn / max(1, fn + tp))
-
-    # 2. Language-wise breakdown
-    by_language = {}
-    for lang in np.unique(languages):
-        idx = (languages == lang)
-        sub_true = y_true[idx]
-        sub_probs = y_probs[idx]
-        sub_preds = y_preds[idx]
-
-        sub_n = len(sub_true)
-        sub_real = int(np.sum(sub_true == 0))
-        sub_ai = int(np.sum(sub_true == 1))
-
-        if sub_n >= 2 and len(np.unique(sub_true)) == 2:
-            sub_acc = float(accuracy_score(sub_true, sub_preds))
-            sub_prec = float(precision_score(sub_true, sub_preds, zero_division=0))
-            sub_rec = float(recall_score(sub_true, sub_preds, zero_division=0))
-            sub_f1 = float(f1_score(sub_true, sub_preds, zero_division=0))
-            sub_eer, sub_thresh = compute_eer(sub_true, sub_probs)
-            sub_cm = confusion_matrix(sub_true, sub_preds)
-            s_tn, s_fp, s_fn, s_tp = sub_cm.ravel() if sub_cm.shape == (2, 2) else (0, 0, 0, 0)
-            sub_fpr = float(s_fp / max(1, s_fp + s_tn))
-            sub_fnr = float(s_fn / max(1, s_fn + s_tp))
-            try:
-                sub_auc = float(roc_auc_score(sub_true, sub_probs))
-            except Exception:
-                sub_auc = None
-        else:
-            sub_acc = float(accuracy_score(sub_true, sub_preds))
-            sub_prec = 0.0
-            sub_rec = 0.0
-            sub_f1 = 0.0
-            sub_eer = 0.0
-            sub_auc = None
-            sub_fpr = 0.0
-            sub_fnr = 0.0
-
-        by_language[lang] = {
-            "samples": sub_n,
-            "real_samples": sub_real,
-            "ai_samples": sub_ai,
-            "accuracy": round(sub_acc, 4),
-            "precision": round(sub_prec, 4),
-            "recall": round(sub_rec, 4),
-            "f1_score": round(sub_f1, 4),
-            "false_positive_rate": round(sub_fpr, 4),
-            "false_negative_rate": round(sub_fnr, 4),
-            "roc_auc": round(sub_auc, 4) if sub_auc is not None else None,
-            "eer": round(sub_eer, 4),
-            "sufficient_test_samples": sub_n >= 10
-        }
-
-    # 3. Dedicated Real-World Human & AI Test Set Evaluation
-    real_human_dir = BASE_DIR / "data" / "real_world_human"
-    real_world_human_results = []
-    if real_human_dir.exists():
-        for audio_f in sorted(real_human_dir.glob("*.wav")):
-            try:
-                audio_arr, sr = feature_extractor.load_audio(str(audio_f), apply_vad=True)
-                feat = feature_extractor.extract_features(audio_arr, random_crop=False)
-                with torch.no_grad():
-                    lgt = model(torch.from_numpy(feat).unsqueeze(0).to(device))
-                    p = torch.sigmoid(lgt / max(0.01, temperature)).item()
-                real_world_human_results.append({
-                    "file": audio_f.name,
-                    "ai_prob": round(p, 4),
-                    "classified_as_ai": p >= optimal_threshold
-                })
-            except Exception:
-                pass
-
-    real_human_fp_count = sum(r["classified_as_ai"] for r in real_world_human_results)
-    real_human_fpr = float(real_human_fp_count / max(1, len(real_world_human_results)))
+    specificity = float(tn / max(1, tn + fp))
 
     results = {
-        "dataset": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
+        "dataset": "pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
+        "dataset_url": "https://www.kaggle.com/datasets/pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
         "model_path": str(model_path),
         "calibration": {
             "temperature": round(temperature, 4),
@@ -242,85 +173,110 @@ def evaluate_test_split(
             "precision": round(prec, 4),
             "recall": round(rec, 4),
             "f1_score": round(f1, 4),
+            "specificity": round(specificity, 4),
             "false_positive_rate": round(fpr, 4),
             "false_negative_rate": round(fnr, 4),
             "roc_auc": round(roc_auc, 4) if roc_auc is not None else None,
             "eer": round(eer, 4),
             "eer_threshold": round(eer_threshold, 4),
             "confusion_matrix": {
-                "true_negatives": int(tn),
-                "false_positives": int(fp),
-                "false_negatives": int(fn),
-                "true_positives": int(tp)
+                "true_negatives_human": int(tn),
+                "false_positives_ai_alarm": int(fp),
+                "false_negatives_missed_ai": int(fn),
+                "true_positives_ai_detected": int(tp)
             }
-        },
-        "real_world_human_eval": {
-            "total_files": len(real_world_human_results),
-            "false_positives": real_human_fp_count,
-            "false_positive_rate": round(real_human_fpr, 4),
-            "files": real_world_human_results
-        },
-        "by_language": by_language
+        }
     }
 
-    # Save to reports/evaluation.json and models/eval_metrics.json
+    # Save to reports/evaluation.json
     with open(output_report, "w") as f:
         json.dump(results, f, indent=2)
+    print(f"[✓] Saved comprehensive evaluation report to: {output_report}", flush=True)
 
-    # models/eval_metrics.json compatibility format
-    eval_metrics_compat = {
-        "dataset": "IndicTTS-Deepfake-Challenge-Data (Multilingual Indic)",
-        "num_test_samples": len(y_true),
-        "accuracy": round(acc, 4),
-        "precision": round(prec, 4),
-        "recall": round(rec, 4),
-        "f1_score": round(f1, 4),
-        "roc_auc": round(roc_auc, 4) if roc_auc is not None else None,
-        "eer": round(eer, 4),
-        "eer_threshold": round(eer_threshold, 4),
-        "confusion_matrix": results["overall"]["confusion_matrix"],
-        "by_language": by_language
-    }
-    with open(MODELS_DIR / "eval_metrics.json", "w") as f:
-        json.dump(eval_metrics_compat, f, indent=2)
+    # Save to models/eval_metrics.json for backend / API consumption
+    eval_metrics_path = MODELS_DIR / "eval_metrics.json"
+    with open(eval_metrics_path, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"[✓] Saved backend metrics to: {eval_metrics_path}", flush=True)
 
-    # Print Formatted Report
-    print("\n" + "-" * 75, flush=True)
-    print("               VOICESHIELD INDICTTS EVALUATION REPORT", flush=True)
-    print("-" * 75, flush=True)
-    print(f"  Test Samples Evaluated : {len(y_true)} (Held-out Disjoint Speakers)", flush=True)
-    print(f"  Overall Accuracy       : {acc*100:.2f}%", flush=True)
-    print(f"  Overall Precision      : {prec*100:.2f}%", flush=True)
-    print(f"  Overall Recall         : {rec*100:.2f}%", flush=True)
-    print(f"  Overall F1-Score       : {f1*100:.2f}%", flush=True)
-    print(f"  Overall ROC-AUC        : {roc_auc:.4f}" if roc_auc else "  Overall ROC-AUC        : N/A", flush=True)
-    print(f"  Equal Error Rate (EER) : {eer*100:.2f}% (Threshold: {eer_threshold:.4f})", flush=True)
-    print("-" * 75, flush=True)
-    print("  Confusion Matrix:")
-    print(f"                     Predicted Human (0)   Predicted AI Fake (1)")
-    print(f"    Actual Human (0)        {tn:^10}             {fp:^10}")
-    print(f"    Actual Fake (1)         {fn:^10}             {tp:^10}")
-    print("-" * 75, flush=True)
-    print("  Language-Wise Performance Breakdown:")
-    print(f"    {'Language':<14} | {'Samples':^8} | {'Accuracy':^9} | {'F1-Score':^9} | {'EER':^8}")
-    print("    " + "-" * 60)
-    for lang, metrics in sorted(by_language.items()):
-        print(f"    {lang:<14} | {metrics['samples']:^8} | {metrics['accuracy']*100:^8.1f}% | {metrics['f1_score']*100:^8.1f}% | {metrics['eer']*100:^7.1f}%")
-    print("-" * 75, flush=True)
-    print(f"[✓] Evaluation report saved to: {output_report} and {MODELS_DIR / 'eval_metrics.json'}", flush=True)
+    # Generate Confusion Matrix visualization
+    try:
+        fig, ax = plt.subplots(figsize=(6, 5), dpi=150)
+        cax = ax.matshow(cm, cmap="Blues", alpha=0.85)
+        for (i, j), z in np.ndenumerate(cm):
+            ax.text(j, i, f"{z:,}", ha="center", va="center", fontsize=14, fontweight="bold")
+        fig.colorbar(cax)
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(["Genuine Human (0)", "AI Cloned (1)"], fontsize=10)
+        ax.set_yticklabels(["Genuine Human (0)", "AI Cloned (1)"], fontsize=10)
+        ax.set_xlabel("Predicted Class", fontsize=11, fontweight="bold", labelpad=10)
+        ax.set_ylabel("Ground Truth Class", fontsize=11, fontweight="bold")
+        ax.set_title(f"VoiceShield Confusion Matrix\n(Accuracy: {acc*100:.1f}%, F1: {f1*100:.1f}%)", fontsize=12, fontweight="bold", pad=15)
+        plt.tight_layout()
+        cm_path = REPORTS_DIR / "confusion_matrix.png"
+        plt.savefig(cm_path, dpi=150)
+        plt.close()
+        print(f"[✓] Saved confusion matrix figure to: {cm_path}")
+    except Exception as err:
+        print(f"[!] Warning generating confusion matrix plot: {err}")
+
+    # Generate ROC Curve visualization
+    try:
+        fpr_curve, tpr_curve, _ = roc_curve(y_true, y_probs)
+        fig, ax = plt.subplots(figsize=(6, 5), dpi=150)
+        ax.plot(fpr_curve, tpr_curve, color="#2563eb", lw=2.5, label=f"VoiceShieldNet (AUC = {roc_auc:.4f})")
+        ax.plot([0, 1], [0, 1], color="#9ca3af", lw=1.5, linestyle="--", label="Random Chance (AUC = 0.50)")
+        ax.scatter([eer], [1 - eer], color="#dc2626", s=60, zorder=5, label=f"EER = {eer*100:.1f}%")
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel("False Positive Rate (FAR)", fontsize=11, fontweight="bold")
+        ax.set_ylabel("True Positive Rate (1 - FRR)", fontsize=11, fontweight="bold")
+        ax.set_title("VoiceShield ROC Curve (Held-out Test Split)", fontsize=12, fontweight="bold")
+        ax.legend(loc="lower right", fontsize=9)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        roc_path = REPORTS_DIR / "roc_curve.png"
+        plt.savefig(roc_path, dpi=150)
+        plt.close()
+        print(f"[✓] Saved ROC curve figure to: {roc_path}")
+    except Exception as err:
+        print(f"[!] Warning generating ROC curve plot: {err}")
+
+    # Print Summary
+    print("\n" + "=" * 75)
+    print("VOICESHIELD FINAL EVALUATION REPORT")
+    print("=" * 75)
+    print(f"  Test Samples Evaluated:  {len(y_true)} (Real: {int(np.sum(y_true==0))}, AI: {int(np.sum(y_true==1))})")
+    print(f"  Accuracy:                {acc * 100:.2f}%")
+    print(f"  Precision:               {prec * 100:.2f}%")
+    print(f"  Recall (Sensitivity):    {rec * 100:.2f}%")
+    print(f"  Specificity:             {specificity * 100:.2f}%")
+    print(f"  F1 Score:                {f1 * 100:.2f}%")
+    if roc_auc is not None:
+        print(f"  ROC-AUC:                 {roc_auc:.4f}")
+    print(f"  Equal Error Rate (EER):  {eer * 100:.2f}% (Threshold: {eer_threshold:.4f})")
+    print(f"  False Positive Rate:     {fpr * 100:.2f}%")
+    print(f"  Confusion Matrix:        TN={tn}, FP={fp}, FN={fn}, TP={tp}")
+    print("=" * 75 + "\n")
 
     return results
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate VoiceShield on IndicTTS Test Set")
-    parser.add_argument("--model", type=str, default=str(MODELS_DIR / "voiceshield_indictts_best.pt"), help="Model checkpoint path")
+    parser = argparse.ArgumentParser(description="Evaluate VoiceShield on Kaggle Test Split")
+    parser.add_argument("--model", type=str, default=str(MODELS_DIR / "voiceshield_model.pt"), help="Model checkpoint path")
     parser.add_argument("--manifest", type=str, default=str(SPLITS_DIR / "test.csv"), help="Test manifest CSV")
-    parser.add_argument("--max-samples", type=int, default=None, help="Max test samples to evaluate")
-    parser.add_argument("--output", type=str, default=str(REPORTS_DIR / "evaluation.json"), help="Output JSON path")
+    parser.add_argument("--output", type=str, default=str(REPORTS_DIR / "evaluation.json"), help="Output report JSON")
+    parser.add_argument("--max-samples", type=int, default=None, help="Cap test samples")
     args = parser.parse_args()
 
-    evaluate_test_split(args.model, args.manifest, args.output, args.max_samples)
+    evaluate_test_split(
+        model_path=args.model,
+        test_manifest=args.manifest,
+        output_report=args.output,
+        max_samples=args.max_samples
+    )
 
 
 if __name__ == "__main__":

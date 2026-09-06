@@ -23,7 +23,7 @@ import numpy as np
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from ml.features import AudioFeatureExtractor
+from ml.features import AudioFeatureExtractor, load_audio, inspect_audio, is_sufficient_speech
 from ml.model import VoiceShieldNet
 from backend.risk_engine import VoiceRiskEngine, ContextualRiskEngine, TransactionContext
 from backend.chunk_analyzer import RealTimeChunkAnalyzer
@@ -33,13 +33,12 @@ from backend.chunk_analyzer import RealTimeChunkAnalyzer
 MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "data"
 DEMO_DIR = DATA_DIR / "sample_demo"
-INDIC_DEMO_DIR = DATA_DIR / "sample_demo" / "indic"
-MODEL_PATH = MODELS_DIR / "voiceshield_indictts_best.pt" if (MODELS_DIR / "voiceshield_indictts_best.pt").exists() else (MODELS_DIR / "voiceshield_model.pt")
+MODEL_PATH = MODELS_DIR / "voiceshield_model.pt"
 METRICS_PATH = MODELS_DIR / "eval_metrics.json"
 
 app = FastAPI(
-    title="VoiceShield AI IndicTTS Core API",
-    description="Real-Time Detection & Prevention of Voice Cloning Impersonation Attacks across Indic Languages",
+    title="VoiceShield AI Core API",
+    description="Real-Time Detection & Prevention of Voice Cloning Impersonation Attacks",
     version="2.0.0"
 )
 
@@ -65,8 +64,8 @@ state = {
 @app.on_event("startup")
 def load_ml_pipeline():
     """Initializes the local PyTorch model on startup."""
-    print("=" * 60)
-    print("Initializing VoiceShield IndicTTS Local ML Inference Engine...")
+    print("=" * 65)
+    print("Initializing VoiceShield Local ML Inference Engine...")
 
     device = torch.device("cpu")
     if torch.backends.mps.is_available():
@@ -103,12 +102,19 @@ def load_ml_pipeline():
             model, feature_extractor, device=device, temperature=cal_temp, threshold=cal_thresh
         )
         state["model_loaded"] = True
-        print(f"[✓] VoiceShieldNet loaded successfully on {device} (Weights: {active_weights})")
-        print(f"[✓] Active Calibration: Temperature={cal_temp:.4f}, Operating Threshold={cal_thresh:.4f}")
+        
+        # Section 9: Verified model checkpoint startup report
+        print(f"[✓] VoiceShieldNet loaded successfully on {device}")
+        print(f"Model checkpoint       : {active_weights}")
+        print(f"Sample rate            : 16000 Hz (mono float32)")
+        print(f"Feature configuration  : 64-band Log-Mel + Delta (velocity) + Delta-Delta (accel)")
+        print(f"Class mapping          : 0 = HUMAN, 1 = AI_GENERATED")
+        print(f"Calibrated Temperature : T = {cal_temp:.4f}")
+        print(f"Operating Threshold    : {cal_thresh:.4f}")
     else:
         print(f"[!] Warning: Model weights not found at {active_weights}. Run ml/training.py first.")
         state["model_loaded"] = False
-    print("=" * 60)
+    print("=" * 65)
 
 
 @app.get("/api/health")
@@ -116,7 +122,7 @@ def health_check():
     """Returns server and local ML engine status."""
     return {
         "status": "online",
-        "service": "VoiceShield IndicTTS Deepfake Prevention Engine",
+        "service": "VoiceShield Core Deepfake Prevention Engine",
         "model_loaded": state["model_loaded"],
         "device": str(state["device"]),
         "model_weights": str(MODEL_PATH)
@@ -126,20 +132,13 @@ def health_check():
 @app.get("/model-info")
 @app.get("/api/model-info")
 def get_model_info():
-    """Returns official model and dataset metadata for VoiceShield IndicTTS."""
+    """Returns official model and dataset metadata for VoiceShield."""
     return {
-        "model_name": "VoiceShield IndicTTS",
-        "dataset": "IndicTTS Deepfake Challenge Dataset (SherryT997/IndicTTS-Deepfake-Challenge-Data)",
-        "languages": [
-            "Assamese", "Bengali", "Bodo", "Dogri", "English (Indian)", "Gujarati",
-            "Hindi", "Kannada", "Malayalam", "Manipuri", "Marathi",
-            "Nepali", "Odia", "Sanskrit", "Tamil", "Telugu"
-        ],
-        "total_languages": 16,
+        "model_name": "VoiceShield Net",
+        "dataset": "Kaggle Fake and Real Audio Dataset (pawarrohitashok/fake-and-real-audio-dataset-deepfake-data)",
         "sample_rate": 16000,
         "classification": "Human vs AI-generated speech",
         "architecture": "VoiceShieldNet (Spectro-Temporal Residual CNN with Delta Features)",
-        "evaluation_split": "Held-Out Disjoint Speakers (Zero Speaker Leakage)",
         "device": str(state["device"])
     }
 
@@ -151,86 +150,73 @@ def get_evaluation_metrics():
         with open(METRICS_PATH, "r") as f:
             metrics = json.load(f)
         return metrics
-    return {"error": "Evaluation metrics not found. Run ml/evaluation.py."}
+    return {"error": "Evaluation metrics not found. Run scripts/evaluation.py."}
 
 
 @app.get("/api/samples")
 def list_demo_samples():
-    """Returns available 1-click demo audio samples across Indic languages and scenarios."""
+    """Returns available demo audio samples from the Kaggle dataset."""
     samples = [
         {
-            "id": "indic_hindi_synthetic_clone.wav",
-            "title": "AI-Cloned Hindi Wire Fraud",
-            "type": "AI-GENERATED / CLONE",
-            "language": "Hindi",
-            "expected_risk": "HIGH",
-            "description": "Synthetic IndicTTS voice clone impersonating the Managing Director demanding emergency wire authorization.",
-            "caller_name": "Vikram Singhania",
-            "caller_role": "Managing Director",
-            "amount": 5000000.0,
-            "urgency": "Immediate",
-            "speaker_verification": "Mismatch / Failed"
-        },
-        {
-            "id": "indic_hindi_genuine.wav",
-            "title": "Legitimate Hindi Speech",
+            "id": "sample_real_01.wav",
+            "title": "Authentic Human Voice Sample 1",
             "type": "GENUINE HUMAN",
-            "language": "Hindi",
+            "language": "Natural Speech",
             "expected_risk": "LOW",
-            "description": "Natural human voice from Mumbai regional desk discussing scheduled operational audit.",
-            "caller_name": "Rajesh Sharma",
+            "description": "Authentic human speech recording with natural acoustic vocal tract resonances.",
+            "caller_name": "Operations Lead",
             "caller_role": "Operations Manager",
-            "amount": 150000.0,
+            "amount": 45000.0,
             "urgency": "Normal",
             "speaker_verification": "Verified Enrolled"
         },
         {
-            "id": "indic_marathi_synthetic_clone.wav",
-            "title": "AI-Cloned Marathi Impersonation",
+            "id": "sample_fake_01.wav",
+            "title": "AI Deepfake Voice Clone 1",
             "type": "AI-GENERATED / CLONE",
-            "language": "Marathi",
+            "language": "Synthetic AI",
             "expected_risk": "HIGH",
-            "description": "Synthetic Marathi cloned speech attempting treasury fund redirection.",
-            "caller_name": "Anand Deshmukh",
-            "caller_role": "Treasury Head",
+            "description": "Synthetic neural voice generation with phase inconsistencies in formant frequencies.",
+            "caller_name": "Finance Director",
+            "caller_role": "Managing Director",
             "amount": 2500000.0,
             "urgency": "Immediate",
             "speaker_verification": "Mismatch / Failed"
         },
         {
-            "id": "indic_marathi_genuine.wav",
-            "title": "Legitimate Marathi Voice",
+            "id": "sample_real_02.wav",
+            "title": "Authentic Human Voice Sample 2",
             "type": "GENUINE HUMAN",
-            "language": "Marathi",
+            "language": "Natural Speech",
             "expected_risk": "LOW",
-            "description": "Authentic human Marathi speech confirming commercial branch verification.",
-            "caller_name": "Pooja Patil",
+            "description": "Legitimate human vocal recording discussing scheduled operational review.",
+            "caller_name": "Regional Supervisor",
             "caller_role": "Branch Manager",
-            "amount": 50000.0,
-            "urgency": "Normal",
-            "speaker_verification": "Verified Enrolled"
-        },
-        {
-            "id": "indic_tamil_genuine.wav",
-            "title": "Legitimate Tamil Voice",
-            "type": "GENUINE HUMAN",
-            "language": "Tamil",
-            "expected_risk": "LOW",
-            "description": "Authentic human Tamil speech during scheduled vendor clearance review.",
-            "caller_name": "Karthik Subramanian",
-            "caller_role": "Auditor",
             "amount": 80000.0,
             "urgency": "Normal",
             "speaker_verification": "Verified Enrolled"
         },
         {
-            "id": "indic_spliced_attack.wav",
-            "title": "Spliced Indic Partial-Spoof Attack",
-            "type": "SPLICED / PARTIAL SPOOF",
-            "language": "Hindi / Indic",
+            "id": "sample_fake_02.wav",
+            "title": "AI Deepfake Voice Clone 2",
+            "type": "AI-GENERATED / CLONE",
+            "language": "Synthetic AI",
             "expected_risk": "HIGH",
-            "description": "Real Hindi greeting spliced with an AI-cloned fraudulent wire transfer directive.",
-            "caller_name": "Finance Desk Mumbai",
+            "description": "Synthetic voice generation simulating executive voice for emergency wire transfer redirection.",
+            "caller_name": "Treasury Executive",
+            "caller_role": "Treasury Head",
+            "amount": 4200000.0,
+            "urgency": "Immediate",
+            "speaker_verification": "Mismatch / Failed"
+        },
+        {
+            "id": "sample_spliced_attack.wav",
+            "title": "Spliced Partial-Spoof Attack",
+            "type": "SPLICED / PARTIAL SPOOF",
+            "language": "Composite",
+            "expected_risk": "HIGH",
+            "description": "Real human greeting concatenated with an AI-cloned fraudulent wire transfer directive.",
+            "caller_name": "Accounts Desk",
             "caller_role": "Senior Accountant",
             "amount": 1800000.0,
             "urgency": "Urgent",
@@ -243,16 +229,70 @@ def list_demo_samples():
 @app.api_route("/api/sample-audio/{filename}", methods=["GET", "HEAD"])
 def stream_sample_audio(filename: str):
     """Streams demo audio WAV files for in-browser playback."""
-    # Check indic demo dir first, then fallback to general demo dir
-    indic_path = INDIC_DEMO_DIR / filename
-    if indic_path.exists():
-        return FileResponse(indic_path, media_type="audio/wav")
-
     file_path = DEMO_DIR / filename
     if file_path.exists():
         return FileResponse(file_path, media_type="audio/wav")
 
     raise HTTPException(status_code=404, detail=f"Audio sample '{filename}' not found")
+
+
+@app.get("/audio-info")
+@app.get("/api/audio-info")
+async def get_audio_info(sample: Optional[str] = None):
+    """
+    Diagnostic Audio Inspection Endpoint (GET):
+    Inspects stream properties of an existing sample audio file.
+    Reports original format, original rate, channels, decoded rate, RMS, and speech duration.
+    """
+    target_path = None
+    if sample:
+        for p in [DEMO_DIR / sample, DATA_DIR / sample]:
+            if p.exists():
+                target_path = p
+                break
+        if target_path is None:
+            raise HTTPException(status_code=404, detail=f"Sample file '{sample}' not found.")
+    else:
+        # Default to first available demo sample
+        first_sample = next(DEMO_DIR.glob("*.wav"), None)
+        if first_sample:
+            target_path = first_sample
+        else:
+            raise HTTPException(status_code=404, detail="No audio sample specified or found.")
+
+    try:
+        info = inspect_audio(str(target_path), filename=target_path.name)
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to inspect audio: {str(e)}")
+
+
+@app.post("/audio-info")
+@app.post("/api/audio-info")
+async def post_audio_info(file: UploadFile = File(...)):
+    """
+    Diagnostic Audio Inspection Endpoint (POST):
+    Inspects stream properties of an uploaded MP3 or WAV file.
+    Reports original format, rate, channels, decoded 16kHz PCM properties, and speech sufficiency.
+    """
+    filename = file.filename or "uploaded_audio"
+    ext = Path(filename).suffix.lower()
+    valid_exts = {".wav", ".mp3", ".flac", ".ogg", ".webm", ".aac", ".m4a"}
+    if ext and ext not in valid_exts:
+        raise HTTPException(status_code=400, detail=f"Unsupported audio format '{ext}'. Please upload MP3 or WAV.")
+
+    try:
+        content = await file.read()
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Empty audio file received")
+        info = inspect_audio(content, filename=filename)
+        return info
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except RuntimeError as re:
+        raise HTTPException(status_code=400, detail=str(re))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio inspection failed: {str(e)}")
 
 
 @app.post("/analyze")
@@ -267,8 +307,9 @@ async def analyze_audio(
 ):
     """
     Main Deepfake Detection Endpoint:
-    Processes uploaded/recorded audio, performs sliding-window inference,
-    computes voice risk and contextual threat scores.
+    Accepts .wav and .mp3 audio, decodes to mono 16kHz PCM waveform,
+    executes sliding-window inference through VoiceShieldNet,
+    and returns probability, risk scores, and temporal timeline.
     """
     if not state["model_loaded"]:
         # Attempt lazy reload if weights were generated
@@ -276,16 +317,82 @@ async def analyze_audio(
         if not state["model_loaded"]:
             raise HTTPException(status_code=503, detail="ML model is not loaded. Train the model first.")
 
+    filename = file.filename or "uploaded_audio.wav"
+    ext = Path(filename).suffix.lower()
+    valid_exts = {".wav", ".mp3", ".flac", ".ogg", ".webm", ".aac", ".m4a"}
+    if ext and ext not in valid_exts:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported audio format. Please upload MP3 or WAV."
+        )
+
     try:
         content = await file.read()
         if len(content) == 0:
             raise HTTPException(status_code=400, detail="Empty audio file received")
 
-        # Load & standardize audio
-        audio, sr = state["feature_extractor"].load_audio(content, apply_vad=True)
+        # Load & standardize audio through central loader (transparent MP3/WAV support)
+        try:
+            audio, sr = load_audio(content, filename=filename, apply_vad=True)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except RuntimeError as re:
+            raise HTTPException(status_code=400, detail=str(re))
 
-        # Segment-level chunk analysis
+        # Check speech energy and perform sliding-window analysis
         chunk_analysis = state["chunk_analyzer"].analyze_audio_stream(audio, sr)
+
+        audio_format = ext.replace(".", "") if ext else "wav"
+        if not audio_format or audio_format == "blob":
+            audio_format = "wav"
+
+        # Handle Insufficient Speech / Silence
+        if chunk_analysis.get("is_insufficient_speech", False):
+            return {
+                "success": True,
+                "filename": filename,
+                "status": "INSUFFICIENT_SPEECH",
+                "duration_sec": chunk_analysis["total_duration"],
+                "total_chunks": 0,
+                "partial_spoof_detected": False,
+                # Phase 18 Spec
+                "voice_analysis": {
+                    "ai_probability": 0.0,
+                    "human_probability": 0.0,
+                    "classification": "INSUFFICIENT_SPEECH",
+                    "confidence": 0.0,
+                    "risk_score": 0.0,
+                    "risk_level": "INSUFFICIENT_SPEECH"
+                },
+                "segments": [],
+                "audio": {
+                    "format": audio_format,
+                    "sample_rate": sr,
+                    "duration": chunk_analysis["total_duration"]
+                },
+                "recommendation": "Insufficient speech detected for reliable analysis. Ensure recording contains audible spoken words.",
+                # Frontend Direct Compatibility
+                "ai_generated_probability": 0.0,
+                "human_probability": 0.0,
+                "classification": "INSUFFICIENT_SPEECH",
+                "confidence": 0.0,
+                "voice_risk_score": 0.0,
+                "voice_risk_status": "INSUFFICIENT_SPEECH",
+                "voice_risk_color": "#94A3B8",
+                "transaction_context": {
+                    "caller_role": caller_role or "CEO / Executive",
+                    "caller_name": caller_name or "Executive Caller",
+                    "amount": amount if amount is not None else 75000.0,
+                    "urgency": urgency or "Immediate",
+                    "speaker_verification": speaker_verification or "Unregistered / Unknown"
+                },
+                "contextual_risk_score": 0.0,
+                "threat_level": "INSUFFICIENT_SPEECH",
+                "security_alert": "Insufficient speech detected for reliable analysis. Please provide a clear recording containing human speech.",
+                "recommended_action": "Insufficient speech detected for reliable analysis. Ensure microphone is active and audio contains clear spoken speech before re-analyzing.",
+                "action_code": "INSUFFICIENT_SPEECH",
+                "chunk_timeline": []
+            }
 
         # Global probability calculated via robust statistical aggregation (trimmed mean / median)
         global_ai_prob = float(chunk_analysis.get("aggregated_ai_probability", 0.5))
@@ -305,7 +412,7 @@ async def analyze_audio(
         )
         context_risk = ContextualRiskEngine.evaluate(global_ai_prob, context)
 
-        # Segments formatted for both timeline display and Phase 13 spec
+        # Segments formatted for both timeline display and Section 18 spec
         segments_list = [
             {
                 "start": round(c["start_time"], 2),
@@ -319,11 +426,11 @@ async def analyze_audio(
 
         return {
             "success": True,
-            "filename": file.filename,
+            "filename": filename,
             "duration_sec": chunk_analysis["total_duration"],
             "total_chunks": chunk_analysis["total_chunks"],
             "partial_spoof_detected": chunk_analysis["partial_spoof_detected"],
-            # Phase 13 Spec Format
+            # Section 18 Spec Format
             "voice_analysis": {
                 "ai_probability": round(global_ai_prob, 4),
                 "human_probability": round(global_human_prob, 4),
@@ -333,6 +440,11 @@ async def analyze_audio(
                 "risk_level": voice_risk["status"]
             },
             "segments": segments_list,
+            "audio": {
+                "format": audio_format,
+                "sample_rate": sr,
+                "duration": chunk_analysis["total_duration"]
+            },
             "recommendation": context_risk["recommended_action"],
             # React Frontend Direct Format
             "ai_generated_probability": round(global_ai_prob, 4),
@@ -342,14 +454,14 @@ async def analyze_audio(
             "voice_risk_score": voice_risk["voice_risk_score"],
             "voice_risk_status": voice_risk["status"],
             "voice_risk_color": voice_risk["color"],
-            "transaction_context": context.dict(),
+            "transaction_context": context.model_dump(),
             "contextual_risk_score": context_risk["contextual_risk_score"],
             "threat_level": context_risk["threat_level"],
             "security_alert": context_risk["security_alert"],
             "recommended_action": context_risk["recommended_action"],
             "action_code": context_risk["action_code"],
             "chunk_timeline": chunk_analysis["chunks"],
-            # Phase 19 Developer & Forensic Debug Payload
+            # Forensic Debug Payload
             "debug": {
                 "audio_duration_sec": chunk_analysis["total_duration"],
                 "sample_rate": sr,
@@ -364,6 +476,8 @@ async def analyze_audio(
             }
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

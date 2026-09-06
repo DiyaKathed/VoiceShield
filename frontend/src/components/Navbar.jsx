@@ -11,10 +11,10 @@ export default function Navbar({ onOpenMetrics, onOpenResearch }) {
         <div>
           <div className="brand-title">
             VoiceShield
-            <span className="brand-badge">IndicTTS</span>
+            <span className="brand-badge">AI Forensic</span>
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-            MODEL: VoiceShield IndicTTS | 16 Indian Languages
+            MODEL: VoiceShieldNet | Kaggle Benchmark
           </div>
         </div>
       </div>
@@ -22,7 +22,7 @@ export default function Navbar({ onOpenMetrics, onOpenResearch }) {
       <div className="nav-actions">
         <div className="system-status-pill">
           <span className="status-dot"></span>
-          <span>Engine: IndicTTS PyTorch</span>
+          <span>Engine: Local PyTorch</span>
         </div>
 
         <button 

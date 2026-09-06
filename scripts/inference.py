@@ -1,7 +1,8 @@
 """
-VoiceShield Inference Script (IndicTTS)
-=======================================
-Convenience entrypoint delegating to ml.inference
+VoiceShield Inference Script
+============================
+Convenience entrypoint delegating to ml.inference.
+Runs deepfake inference on arbitrary audio files using VoiceShieldNet.
 """
 
 import sys

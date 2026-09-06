@@ -1,7 +1,8 @@
 """
-VoiceShield Training Script (IndicTTS)
-======================================
-Convenience entrypoint delegating to ml.training
+VoiceShield Training Script
+===========================
+Convenience entrypoint delegating to ml.training.
+Trains VoiceShieldNet on the Kaggle Fake and Real Audio Dataset.
 """
 
 import sys

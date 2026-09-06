@@ -1,15 +1,13 @@
 """
-VoiceShield IndicTTS Dataset Module
-===================================
-PyTorch Dataset loaders for the SherryT997/IndicTTS-Deepfake-Challenge-Data.
+VoiceShield Dataset Module
+==========================
+PyTorch Dataset loaders for VoiceShield deepfake voice detection.
 Supports:
-- 16 Indian languages (Assamese, Bengali, Bodo, Dogri, English, Gujarati,
-  Hindi, Kannada, Malayalam, Manipuri, Marathi, Nepali, Odia, Sanskrit, Tamil, Telugu)
-- Direct reading from split manifests (train.csv, val.csv, test.csv)
-- Efficient parquet audio decoding with soundfile & PyAV fallback
-- Resampling from 44.1kHz to 16kHz mono float32 with VAD
+- Direct reading from split manifests (train.csv, val.csv, test.csv, dataset_manifest.csv)
+- Audio standardization to 16kHz mono float32 with VAD
+- Fast RAM caching via preload_audio()
 - Configurable data augmentations (noise, SpecAugment, channel distortion)
-- Strict disjoint speaker handling
+- Consistent label mapping: 0.0 = HUMAN / REAL, 1.0 = AI / FAKE
 """
 
 import os
@@ -17,13 +15,12 @@ import io
 import torch
 import numpy as np
 import pandas as pd
-import pyarrow.parquet as pq
 import soundfile as sf
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict, Union
 from torch.utils.data import Dataset
 
-from ml.features import AudioFeatureExtractor
+from ml.features import AudioFeatureExtractor, TARGET_SR, CHUNK_SAMPLES
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -62,7 +59,7 @@ class AudioDataAugmenter:
             noise = np.random.randn(*out.shape) * self.noise_level
             out = out + noise
 
-        # Telephony bandpass simulation (attenuate low <300Hz and high >3400Hz)
+        # Telephony bandpass simulation
         if self.telephony_simulation and np.random.rand() > 0.6:
             out = np.clip(out * np.random.uniform(0.85, 1.15), -1.0, 1.0)
 
@@ -79,24 +76,23 @@ class AudioDataAugmenter:
         c, n_mels, time_frames = augmented.shape
 
         # Frequency Masking
-        f_len = np.random.randint(1, min(self.freq_mask_param, n_mels // 2))
-        f_start = np.random.randint(0, n_mels - f_len)
+        f_len = np.random.randint(1, min(self.freq_mask_param, max(2, n_mels // 2)))
+        f_start = np.random.randint(0, max(1, n_mels - f_len))
         augmented[:, f_start:f_start + f_len, :] = 0.0
 
         # Time Masking
-        t_len = np.random.randint(1, min(self.time_mask_param, time_frames // 2))
-        t_start = np.random.randint(0, time_frames - t_len)
+        t_len = np.random.randint(1, min(self.time_mask_param, max(2, time_frames // 2)))
+        t_start = np.random.randint(0, max(1, time_frames - t_len))
         augmented[:, :, t_start:t_start + t_len] = 0.0
 
         return augmented
 
 
-class IndicTTSDataset(Dataset):
+class VoiceShieldDataset(Dataset):
     """
-    PyTorch Dataset loading samples from IndicTTS parquet splits.
-    Reads metadata from split CSV (train.csv, val.csv, or test.csv),
-    lazily fetches audio bytes from the corresponding parquet partition,
-    standardizes to 16kHz mono, and extracts 3-channel spectro-temporal features.
+    PyTorch Dataset loading samples from VoiceShield manifests or splits.
+    Reads audio filepaths from CSV (train.csv, val.csv, test.csv, or dataset_manifest.csv),
+    standardizes audio to 16kHz mono, and extracts 3-channel spectro-temporal features.
     """
 
     def __init__(
@@ -104,8 +100,7 @@ class IndicTTSDataset(Dataset):
         manifest: Union[str, pd.DataFrame, Path],
         feature_extractor: Optional[AudioFeatureExtractor] = None,
         augment: bool = False,
-        max_samples: Optional[int] = None,
-        filter_languages: Optional[List[str]] = None
+        max_samples: Optional[int] = None
     ):
         if isinstance(manifest, (str, Path)):
             manifest_path = Path(manifest)
@@ -115,11 +110,7 @@ class IndicTTSDataset(Dataset):
         else:
             self.df = manifest.copy()
 
-        # Optional language filtering
-        if filter_languages:
-            self.df = self.df[self.df['language'].isin(filter_languages)]
-
-        # Optional sample cap for fast smoke testing
+        # Optional sample cap for fast testing
         if max_samples and max_samples < len(self.df):
             self.df = self.df.sample(n=max_samples, random_state=42).reset_index(drop=True)
 
@@ -129,59 +120,59 @@ class IndicTTSDataset(Dataset):
 
         self._audio_cache = {}
         self._feature_cache = {}
-        self._table_cache = {}
         self.skipped_count = 0
 
     def __len__(self) -> int:
         return len(self.df)
 
-    def _get_row_group(self, rel_path: str, rg_idx: int):
-        cache_key = (rel_path, rg_idx)
-        if cache_key not in self._table_cache:
-            full_path = str(BASE_DIR / rel_path)
-            if len(self._table_cache) >= 50:
-                self._table_cache.pop(next(iter(self._table_cache)))
-            pf = pq.ParquetFile(full_path)
-            safe_rg = min(rg_idx, pf.num_row_groups - 1)
-            self._table_cache[cache_key] = pf.read_row_group(safe_rg, columns=['audio'])
-        return self._table_cache[cache_key]
+    def _resolve_filepath(self, row: pd.Series) -> Path:
+        """Resolves audio filepath to an absolute path."""
+        for col in ['filepath', 'rel_filepath', 'audio_path']:
+            if col in row and pd.notna(row[col]):
+                p = Path(str(row[col]))
+                if p.is_absolute() and p.exists():
+                    return p
+                cand = BASE_DIR / p
+                if cand.exists():
+                    return cand
+
+        # Fallback: check filename in common data dirs
+        if 'filename' in row and pd.notna(row['filename']):
+            fn = str(row['filename'])
+            for sub in ['train/real', 'train/fake', 'val/real', 'val/fake', 'test/real', 'test/fake', 'sample_demo', '']:
+                cand = BASE_DIR / 'data' / sub / fn
+                if cand.exists():
+                    return cand
+
+        # Return whatever was specified
+        val = row.get('filepath', row.get('rel_filepath', ''))
+        return Path(str(val))
 
     def preload_audio(self):
         """
-        Preloads all audio samples sequentially by parquet file and row group.
-        This completely eliminates random-seek disk thrashing during DataLoader iterations.
+        Preloads all audio samples sequentially into RAM.
+        Eliminates disk I/O latency during training epochs.
         """
         if len(self.df) == 0:
             return
 
-        print(f"[+] Sequentially preloading {len(self.df)} audio samples into memory...", flush=True)
-        df_work = self.df.copy()
-        df_work['orig_idx'] = df_work.index
-        df_work['row_int'] = df_work['row_index'].astype(int)
-        df_work['rg_idx'] = df_work['row_int'] // 100
-        df_work['rg_offset'] = df_work['row_int'] % 100
-
-        grouped = df_work.groupby(['parquet_file', 'rg_idx'], sort=False)
-        for (pq_file, rg_idx), grp in grouped:
+        print(f"[+] Preloading {len(self.df)} audio samples into memory...", flush=True)
+        for idx in range(len(self.df)):
+            if idx in self._audio_cache:
+                continue
+            row = self.df.iloc[idx]
+            fp = self._resolve_filepath(row)
             try:
-                full_path = str(BASE_DIR / pq_file)
-                pf = pq.ParquetFile(full_path)
-                safe_rg = min(rg_idx, pf.num_row_groups - 1)
-                rg_tbl = pf.read_row_group(safe_rg, columns=['audio'])
-                audio_col = rg_tbl.column('audio')
+                if fp.exists():
+                    audio, _ = self.feature_extractor.load_audio(str(fp), apply_vad=True)
+                else:
+                    audio = np.zeros(self.feature_extractor.chunk_samples, dtype=np.float32)
+            except Exception as e:
+                self.skipped_count += 1
+                audio = np.zeros(self.feature_extractor.chunk_samples, dtype=np.float32)
 
-                for _, row in grp.iterrows():
-                    idx = int(row['orig_idx'])
-                    offset = int(row['rg_offset'])
-                    safe_offset = min(offset, len(rg_tbl) - 1)
-                    audio_cell = audio_col[safe_offset].as_py()
-                    audio_bytes = audio_cell['bytes']
-                    audio, _ = self.feature_extractor.load_audio(audio_bytes, apply_vad=True)
-                    self._audio_cache[idx] = audio
-            except Exception:
-                for _, row in grp.iterrows():
-                    idx = int(row['orig_idx'])
-                    self._audio_cache[idx] = np.zeros(self.feature_extractor.chunk_samples, dtype=np.float32)
+            self._audio_cache[idx] = audio
+
         print(f"[✓] Successfully cached {len(self._audio_cache)} samples in RAM.", flush=True)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -189,24 +180,25 @@ class IndicTTSDataset(Dataset):
             return self._feature_cache[idx]
 
         row = self.df.iloc[idx]
-        label = float(row['is_tts'])  # 0.0 = Real, 1.0 = AI
+
+        # Determine label: 0.0 = Real / Human, 1.0 = AI / Fake
+        if 'label' in row:
+            label = float(row['label'])
+        elif 'is_tts' in row:
+            label = float(row['is_tts'])
+        else:
+            label = 0.0
 
         if idx in self._audio_cache:
             audio = self._audio_cache[idx]
         else:
-            row_idx = int(row['row_index'])
-            rg_idx = row_idx // 100
-            rg_offset = row_idx % 100
-
+            fp = self._resolve_filepath(row)
             try:
-                rg_tbl = self._get_row_group(row['parquet_file'], rg_idx)
-                safe_offset = min(rg_offset, len(rg_tbl) - 1)
-                audio_cell = rg_tbl.column('audio')[safe_offset].as_py()
-                audio_bytes = audio_cell['bytes']
-
-                # Standardize audio to 16kHz mono float32
-                audio, _ = self.feature_extractor.load_audio(audio_bytes, apply_vad=True)
-            except Exception as e:
+                if fp.exists():
+                    audio, _ = self.feature_extractor.load_audio(str(fp), apply_vad=True)
+                else:
+                    audio = np.zeros(self.feature_extractor.chunk_samples, dtype=np.float32)
+            except Exception:
                 self.skipped_count += 1
                 audio = np.zeros(self.feature_extractor.chunk_samples, dtype=np.float32)
 
@@ -231,5 +223,6 @@ class IndicTTSDataset(Dataset):
         return features_tensor, label_tensor
 
 
-# Backward compatibility alias
-VoiceDataset = IndicTTSDataset
+# Backward compatibility aliases
+VoiceDataset = VoiceShieldDataset
+IndicTTSDataset = VoiceShieldDataset

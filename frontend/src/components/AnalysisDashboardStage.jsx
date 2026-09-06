@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  ArrowLeft, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, 
+import {
+  ArrowLeft, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2,
   Lock, Shield, Volume2, Activity, Info, ChevronDown, ChevronUp,
   Cpu, FileText
 } from 'lucide-react';
@@ -25,40 +25,50 @@ export default function AnalysisDashboardStage({
     );
   }
 
+  const isInsufficient = results.status === 'INSUFFICIENT_SPEECH' || results.classification === 'INSUFFICIENT_SPEECH';
+
   const aiProb = results.ai_generated_probability ?? (results.voice_analysis?.ai_probability ?? 0.5);
   const humanProb = results.human_probability ?? (results.voice_analysis?.human_probability ?? 0.5);
   const aiPct = Math.round(aiProb * 100);
   const humanPct = Math.round(humanProb * 100);
 
   const voiceRisk = results.voice_risk_score ?? (results.voice_analysis?.risk_score ?? Math.round(aiProb * 100));
-  const isHighRisk = voiceRisk >= 70;
-  const isMedRisk = voiceRisk >= 40 && voiceRisk < 70;
-  const riskStatus = results.voice_risk_status || (results.voice_analysis?.risk_level || (isHighRisk ? "HIGH RISK" : isMedRisk ? "MEDIUM RISK" : "LOW RISK"));
-  const riskClass = isHighRisk ? 'risk-high' : (isMedRisk ? 'risk-med' : 'risk-low');
+  const isHighRisk = voiceRisk >= 70 && !isInsufficient;
+  const isMedRisk = voiceRisk >= 40 && voiceRisk < 70 && !isInsufficient;
+  const riskStatus = isInsufficient ? "INSUFFICIENT SPEECH" : (results.voice_risk_status || (results.voice_analysis?.risk_level || (isHighRisk ? "HIGH RISK" : isMedRisk ? "MEDIUM RISK" : "LOW RISK")));
+  const riskClass = isInsufficient ? 'risk-med' : (isHighRisk ? 'risk-high' : (isMedRisk ? 'risk-med' : 'risk-low'));
 
-  const classification = results.classification || (results.voice_analysis?.classification || (isHighRisk ? "SYNTHETIC / AI VOICE CLONE" : isMedRisk ? "SUSPICIOUS / ANOMALOUS SPEECH" : "GENUINE HUMAN SPEECH"));
-  const confidencePct = Math.round((results.confidence ?? 0.5) * 100);
+  const classification = isInsufficient ? "INSUFFICIENT SPEECH" : (results.classification || (results.voice_analysis?.classification || (isHighRisk ? "SYNTHETIC / AI VOICE CLONE" : isMedRisk ? "SUSPICIOUS / ANOMALOUS SPEECH" : "GENUINE HUMAN SPEECH")));
+  const confidencePct = isInsufficient ? 0 : Math.round((results.confidence ?? 0.5) * 100);
 
   // Segments timeline
   const segments = results.chunk_timeline || results.segments || [];
 
   // Transaction context
   const context = results.transaction_context || {};
-  const contextRisk = results.contextual_risk_score || 0;
-  const threatLevel = results.threat_level || (isHighRisk ? "CRITICAL THREAT" : isMedRisk ? "ELEVATED ADVISORY" : "VERIFIED SAFE");
+  const contextRisk = isInsufficient ? 0 : (results.contextual_risk_score || 0);
+  const threatLevel = isInsufficient ? "INSUFFICIENT SPEECH" : (results.threat_level || (isHighRisk ? "CRITICAL THREAT" : isMedRisk ? "ELEVATED ADVISORY" : "VERIFIED SAFE"));
 
   // Dynamic Security Alert & Action Recommendation based on real model output
-  const securityAlert = isHighRisk 
-    ? "Possible AI-generated or voice-cloned speech detected." 
-    : isMedRisk 
-      ? "Anomalous or degraded spectral signatures detected in voice recording." 
-      : "No strong evidence of AI-generated speech was detected. Continue to follow normal verification procedures.";
+  const securityAlert = isInsufficient
+    ? (results.security_alert || "Insufficient speech detected for reliable analysis. The audio recording contains too little voiced speech to evaluate.")
+    : (isHighRisk
+      ? "Possible AI-generated or voice-cloned speech detected."
+      : isMedRisk
+        ? "Anomalous or degraded spectral signatures detected in voice recording."
+        : "No strong evidence of AI-generated speech was detected. Continue to follow normal verification procedures.");
 
-  const recommendedAction = isHighRisk 
-    ? "Verify the caller through an independent communication channel before authorizing sensitive actions." 
-    : isMedRisk 
-      ? "Request additional biometric verification or secondary supervisor approval before authorization." 
-      : "Permit transaction processing under standard operational oversight protocols.";
+  const recommendedAction = isInsufficient
+    ? (results.recommended_action || "Ensure microphone is active and audio contains audible spoken words before re-analyzing.")
+    : (isHighRisk
+      ? "Verify the caller through an independent communication channel before authorizing sensitive actions."
+      : isMedRisk
+        ? "Request additional biometric verification or secondary supervisor approval before authorization."
+        : "Permit transaction processing under standard operational oversight protocols.");
+
+  const detectedFormat = results.audio?.format
+    ? results.audio.format.toUpperCase()
+    : (currentFilename && currentFilename.toLowerCase().endsWith('.mp3') ? 'MP3' : 'WAV');
 
   return (
     <div className="stage-analysis-container">
@@ -85,6 +95,17 @@ export default function AnalysisDashboardStage({
         <div className="audio-meta-left">
           <Volume2 size={20} color="var(--accent-cyan)" />
           <span className="audio-filename">{currentFilename || "Analyzed Voice Stream"}</span>
+          <span className="audio-duration-badge" style={{
+            background: 'rgba(6, 182, 212, 0.2)',
+            color: 'var(--accent-cyan)',
+            fontWeight: 700,
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+            marginRight: '6px'
+          }}>
+            {detectedFormat}
+          </span>
           <span className="audio-duration-badge">{results.duration_sec ? `${results.duration_sec}s` : 'Standard Audio'}</span>
         </div>
         {currentAudioUrl && (
@@ -138,7 +159,7 @@ export default function AnalysisDashboardStage({
               </div>
               <div className="metric-pill">
                 <span className="m-label">Model Engine:</span>
-                <span className="m-val">VoiceShield IndicTTS</span>
+                <span className="m-val">VoiceShieldNet</span>
               </div>
             </div>
           </div>
@@ -198,9 +219,9 @@ export default function AnalysisDashboardStage({
                       {startTime.toFixed(1)}s ───── {endTime.toFixed(1)}s
                     </div>
                     <div className="segment-graph-track">
-                      <div 
-                        className="segment-graph-fill" 
-                        style={{ width: `${segPct}%`, backgroundColor: segColor }} 
+                      <div
+                        className="segment-graph-fill"
+                        style={{ width: `${segPct}%`, backgroundColor: segColor }}
                       />
                     </div>
                     <div className="segment-prob" style={{ color: segColor }}>
@@ -263,11 +284,11 @@ export default function AnalysisDashboardStage({
             <div className="model-specs-list">
               <div className="spec-row">
                 <span className="spec-k">Model Name:</span>
-                <span className="spec-v">VoiceShield IndicTTS</span>
+                <span className="spec-v">VoiceShieldNet</span>
               </div>
               <div className="spec-row">
                 <span className="spec-k">Dataset:</span>
-                <span className="spec-v">IndicTTS Challenge (16 Indian Langs)</span>
+                <span className="spec-v">Kaggle Fake & Real Audio Dataset</span>
               </div>
               <div className="spec-row">
                 <span className="spec-k">Architecture:</span>

@@ -14,7 +14,7 @@ export default function App() {
   // Audio state
   const [currentAudioUrl, setCurrentAudioUrl] = useState('');
   const [currentAudioBlob, setCurrentAudioBlob] = useState(null);
-  const [currentFilename, setCurrentFilename] = useState('indic_hindi_synthetic_clone.wav');
+  const [currentFilename, setCurrentFilename] = useState('sample_fake_01.wav');
 
   // Modals
   const [isMetricsOpen, setIsMetricsOpen] = useState(false);
@@ -22,9 +22,9 @@ export default function App() {
 
   // Transaction Context State
   const [transactionContext, setTransactionContext] = useState({
-    caller_name: "Vikram Singhania",
+    caller_name: "Finance Director",
     caller_role: "Managing Director",
-    amount: 5000000.0,
+    amount: 2500000.0,
     urgency: "Immediate",
     speaker_verification: "Mismatch / Failed"
   });
@@ -33,7 +33,7 @@ export default function App() {
   useEffect(() => {
     const initDefaultSample = async () => {
       try {
-        const audioUrl = '/api/sample-audio/indic_hindi_synthetic_clone.wav';
+        const audioUrl = '/api/sample-audio/sample_fake_01.wav';
         setCurrentAudioUrl(audioUrl);
         const res = await fetch(audioUrl);
         if (res.ok) {
@@ -163,7 +163,7 @@ export default function App() {
 
       {/* Global Footer */}
       <footer className="footer">
-        VoiceShield MVP &bull; Smart India Hackathon &bull; Local PyTorch IndicTTS Forensic Engine &bull; Zero External API Dependency
+        VoiceShield MVP &bull; Smart India Hackathon &bull; Local PyTorch Deepfake Forensic Engine &bull; Zero External API Dependency
       </footer>
     </div>
   );

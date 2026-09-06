@@ -41,6 +41,7 @@ import numpy as np
 import librosa
 import soundfile as sf
 import io
+from pathlib import Path
 from typing import Tuple, List, Optional, Union
 
 
@@ -52,6 +53,228 @@ HOP_LENGTH = 512           # 32ms hop for temporal resolution
 CHUNK_DURATION_SEC = 2.0   # 2.0 seconds per analysis segment for rich phonetic context
 CHUNK_SAMPLES = int(TARGET_SR * CHUNK_DURATION_SEC)  # 32,000 samples
 EXPECTED_FRAMES = int(np.ceil(CHUNK_SAMPLES / HOP_LENGTH))  # ~63 frames
+
+
+def is_sufficient_speech(
+    audio: np.ndarray,
+    sr: int = TARGET_SR,
+    vad_top_db: float = 30.0,
+    min_speech_duration: float = 0.35
+) -> Tuple[bool, float]:
+    """
+    RESEARCH EXTENSION: Silence & Insufficient Speech Detection.
+    Verifies that audio contains meaningful vocal acoustic energy rather than
+    silence, background microphone hum, or empty static.
+    Returns: (is_sufficient, active_speech_duration_seconds)
+    """
+    if audio is None or len(audio) == 0:
+        return False, 0.0
+
+    total_dur = len(audio) / sr
+    if total_dur < min_speech_duration:
+        return False, total_dur
+
+    peak = float(np.max(np.abs(audio)))
+    rms = float(np.sqrt(np.mean(audio**2)))
+
+    # Detect pure silence or sub-audible background static
+    if peak < 0.008 or rms < 0.002:
+        return False, 0.0
+
+    try:
+        intervals = librosa.effects.split(audio, top_db=vad_top_db)
+        active_speech_sec = float(sum((iv[1] - iv[0]) for iv in intervals) / sr)
+        if active_speech_sec < min_speech_duration:
+            return False, active_speech_sec
+        return True, active_speech_sec
+    except Exception:
+        # If interval splitting encounters an issue, fallback to RMS energy check
+        return (rms >= 0.005), total_dur
+
+
+def load_audio(
+    audio_source: Union[str, bytes, io.BytesIO],
+    target_sr: int = TARGET_SR,
+    apply_vad: bool = True,
+    vad_top_db: float = 30.0,
+    filename: Optional[str] = None
+) -> Tuple[np.ndarray, int]:
+    """
+    CENTRAL AUDIO LOADER (VoiceShield Core Pipeline):
+    Transparently decodes and standardizes both WAV and MP3 audio into the exact
+    16kHz mono float32 PCM waveform expected by VoiceShieldNet.
+    
+    Processing Steps:
+      1. Format validation (WAV, MP3, FLAC, OGG, WebM, AAC)
+      2. Decoding via PyAV (fast, resilient C-decoder) or librosa/soundfile
+      3. Channel downmixing to mono
+      4. High-quality resampling to target_sr (16,000 Hz)
+      5. Float32 conversion and amplitude peak normalization (/ peak * 0.95)
+      6. Optional Voice Activity Detection (VAD) silence trimming
+    """
+    raw_bytes: Optional[bytes] = None
+    inferred_filename = filename or ""
+
+    if isinstance(audio_source, (bytes, bytearray)):
+        raw_bytes = bytes(audio_source)
+        source_buffer = io.BytesIO(raw_bytes)
+    elif isinstance(audio_source, io.BytesIO):
+        audio_source.seek(0)
+        raw_bytes = audio_source.getvalue()
+        source_buffer = audio_source
+    elif isinstance(audio_source, (str, Path)):
+        file_path = Path(audio_source)
+        inferred_filename = file_path.name
+        ext = file_path.suffix.lower()
+        valid_exts = {".wav", ".mp3", ".flac", ".ogg", ".webm", ".aac", ".m4a"}
+        if ext and ext not in valid_exts:
+            raise ValueError(f"Unsupported audio format '{ext}'. Please upload MP3 or WAV.")
+        with open(file_path, "rb") as f:
+            raw_bytes = f.read()
+        source_buffer = io.BytesIO(raw_bytes)
+    else:
+        raise ValueError(f"Unsupported audio source type: {type(audio_source)}")
+
+    # Check extension from filename if available
+    if inferred_filename:
+        ext = Path(inferred_filename).suffix.lower()
+        valid_exts = {".wav", ".mp3", ".flac", ".ogg", ".webm", ".aac", ".m4a"}
+        if ext and ext not in valid_exts:
+            raise ValueError(f"Unsupported audio format '{ext}'. Please upload MP3 or WAV.")
+
+    audio: Optional[np.ndarray] = None
+    sr: int = target_sr
+    decode_error: Optional[Exception] = None
+
+    # Step 1: Decode using PyAV (reliable C-based decoding for both MP3 & WAV)
+    try:
+        # pyrefly: ignore [missing-import]
+        import av
+        source_buffer.seek(0)
+        container = av.open(source_buffer)
+        if len(container.streams.audio) > 0:
+            resampler = av.AudioResampler(format='fltp', layout='mono', rate=target_sr)
+            frames = []
+            for frame in container.decode(audio=0):
+                for rf in resampler.resample(frame):
+                    frames.append(rf.to_ndarray())
+            if len(frames) > 0:
+                audio = np.concatenate(frames, axis=1).squeeze(0).astype(np.float32)
+                sr = target_sr
+    except Exception as av_err:
+        decode_error = av_err
+
+    # Step 2: Fallback to standard librosa/soundfile if PyAV was not available or encountered an issue
+    if audio is None or len(audio) == 0:
+        try:
+            source_buffer.seek(0)
+            audio, sr = librosa.load(source_buffer, sr=target_sr, mono=True)
+            decode_error = None
+        except Exception as lib_err:
+            decode_error = lib_err
+
+    # If both decoders failed, raise clear, descriptive error
+    if audio is None or len(audio) == 0:
+        is_mp3 = ".mp3" in inferred_filename.lower() or (raw_bytes and raw_bytes[:3] == b'ID3')
+        if is_mp3:
+            raise RuntimeError("Unable to decode MP3 audio. Please upload a valid MP3 file.")
+        raise RuntimeError(f"Unable to decode audio. Please upload a valid MP3 or WAV file. (Error: {decode_error})")
+
+    # Step 3: VAD silence trimming on leading and trailing non-speech
+    if apply_vad and len(audio) > target_sr * 0.4:
+        try:
+            trimmed_audio, _ = librosa.effects.trim(audio, top_db=vad_top_db)
+            if len(trimmed_audio) >= target_sr * 0.3:
+                audio = trimmed_audio
+        except Exception:
+            pass
+
+    # Step 4: Amplitude Peak Normalization (consistent dynamic scale)
+    peak = np.max(np.abs(audio))
+    if peak > 1e-6:
+        audio = audio / peak * 0.95
+
+    return audio.astype(np.float32), sr
+
+
+def inspect_audio(
+    audio_source: Union[str, bytes, io.BytesIO],
+    filename: Optional[str] = None
+) -> dict:
+    """
+    DIAGNOSTIC INSPECTION HELPER (GET /audio-info):
+    Extracts deep stream metadata from uploaded or local audio files.
+    Reports original format, rate, channels alongside decoded 16kHz PCM properties.
+    """
+    inferred_filename = filename or ""
+    raw_bytes: Optional[bytes] = None
+
+    if isinstance(audio_source, (bytes, bytearray)):
+        raw_bytes = bytes(audio_source)
+    elif isinstance(audio_source, io.BytesIO):
+        audio_source.seek(0)
+        raw_bytes = audio_source.getvalue()
+    elif isinstance(audio_source, (str, Path)):
+        fp = Path(audio_source)
+        if not inferred_filename:
+            inferred_filename = fp.name
+        with open(fp, "rb") as f:
+            raw_bytes = f.read()
+
+    ext = Path(inferred_filename).suffix.lower() if inferred_filename else ""
+
+    orig_fmt = "unknown"
+    orig_sr = TARGET_SR
+    orig_channels = 1
+
+    try:
+        # pyrefly: ignore [missing-import]
+        import av
+        container = av.open(io.BytesIO(raw_bytes))
+        if len(container.streams.audio) > 0:
+            astream = container.streams.audio[0]
+            orig_fmt = container.format.name
+            orig_sr = astream.rate
+            orig_channels = astream.channels
+    except Exception:
+        # Fallback inspection via soundfile
+        try:
+            info = sf.info(io.BytesIO(raw_bytes))
+            orig_fmt = str(info.format).lower()
+            orig_sr = info.samplerate
+            orig_channels = info.channels
+        except Exception:
+            pass
+
+    # Decode through central loader without VAD to report raw waveform metrics
+    audio, decoded_sr = load_audio(
+        raw_bytes,
+        target_sr=TARGET_SR,
+        apply_vad=False,
+        filename=inferred_filename
+    )
+
+    # Check speech sufficiency
+    is_sufficient, speech_dur = is_sufficient_speech(audio, sr=decoded_sr)
+
+    return {
+        "filename": inferred_filename or "uploaded_audio",
+        "extension": ext or f".{orig_fmt}",
+        "original_format": orig_fmt,
+        "original_sample_rate": orig_sr,
+        "original_channels": orig_channels,
+        "decoded_sample_rate": decoded_sr,
+        "decoded_channels": 1,
+        "duration": round(len(audio) / decoded_sr, 3),
+        "number_of_samples": len(audio),
+        "dtype": str(audio.dtype),
+        "minimum_amplitude": round(float(np.min(audio)), 4),
+        "maximum_amplitude": round(float(np.max(audio)), 4),
+        "rms": round(float(np.sqrt(np.mean(audio**2))), 4),
+        "is_speech_sufficient": is_sufficient,
+        "speech_duration": round(speech_dur, 3),
+        "successfully_decoded": True
+    }
 
 
 class AudioFeatureExtractor:
@@ -83,64 +306,20 @@ class AudioFeatureExtractor:
     def load_audio(
         self,
         audio_source: Union[str, bytes, io.BytesIO],
-        apply_vad: bool = True
+        apply_vad: bool = True,
+        filename: Optional[str] = None
     ) -> Tuple[np.ndarray, int]:
         """
-        Loads audio from filepath or byte buffer, standardizes to mono 16kHz,
-        applies peak/RMS normalization, and optionally trims silence.
-        Robustly handles WAV, MP3, FLAC, OGG, WebM, AAC, and browser mic formats.
+        Delegates directly to the central load_audio implementation.
+        Guarantees 100% identical preprocessing for training and inference across WAV and MP3.
         """
-        raw_bytes = None
-        if isinstance(audio_source, (bytes, bytearray)):
-            raw_bytes = bytes(audio_source)
-            audio_source = io.BytesIO(raw_bytes)
-        elif isinstance(audio_source, io.BytesIO):
-            audio_source.seek(0)
-            raw_bytes = audio_source.getvalue()
-
-        audio = None
-        sr = self.sample_rate
-
-        # 1. First attempt: standard librosa/soundfile loading
-        try:
-            audio, sr = librosa.load(audio_source, sr=self.sample_rate, mono=True)
-        except Exception:
-            # 2. Fallback: PyAV decoding for browser WebM, Opus, MP4, AAC, etc.
-            if raw_bytes is not None or isinstance(audio_source, str):
-                try:
-                    import av
-                    container_source = io.BytesIO(raw_bytes) if raw_bytes is not None else audio_source
-                    container = av.open(container_source)
-                    resampler = av.AudioResampler(format='fltp', layout='mono', rate=self.sample_rate)
-                    frames = []
-                    for frame in container.decode(audio=0):
-                        for rf in resampler.resample(frame):
-                            frames.append(rf.to_ndarray())
-                    if len(frames) > 0:
-                        audio = np.concatenate(frames, axis=1).squeeze(0).astype(np.float32)
-                        sr = self.sample_rate
-                except Exception as av_err:
-                    print(f"PyAV fallback error: {av_err}")
-
-        if audio is None or len(audio) == 0:
-            return np.zeros(self.chunk_samples, dtype=np.float32), self.sample_rate
-
-        # RESEARCH EXTENSION: Silence / Non-Speech Artifact Mitigation
-        # Trimming low-energy silence to prevent models from learning room acoustic noise
-        if apply_vad and len(audio) > self.sample_rate * 0.5:
-            try:
-                trimmed_audio, _ = librosa.effects.trim(audio, top_db=self.vad_top_db)
-                if len(trimmed_audio) >= self.sample_rate * 0.3:
-                    audio = trimmed_audio
-            except Exception:
-                pass
-
-        # Peak & RMS Normalization to standardize amplitude across devices
-        peak = np.max(np.abs(audio))
-        if peak > 1e-6:
-            audio = audio / peak * 0.95
-
-        return audio.astype(np.float32), sr
+        return load_audio(
+            audio_source=audio_source,
+            target_sr=self.sample_rate,
+            apply_vad=apply_vad,
+            vad_top_db=self.vad_top_db,
+            filename=filename
+        )
 
     def extract_features(
         self,

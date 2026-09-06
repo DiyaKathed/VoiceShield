@@ -1,129 +1,36 @@
 {
-  "dataset_name": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
-  "dataset_location": "/Users/diya/Desktop/SIH/dataindictts/data",
-  "total_train_samples": 31102,
-  "total_official_test_samples": 2635,
-  "label_distribution": {
-    "human_real_0": 15558,
-    "ai_tts_1": 15544,
-    "real_percentage": 50.02,
-    "ai_percentage": 49.98
+  "dataset_name": "pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
+  "dataset_url": "https://www.kaggle.com/datasets/pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
+  "total_audio_files": 854,
+  "real_human_files": 423,
+  "ai_fake_files": 431,
+  "label_mapping": {
+    "0": "HUMAN / REAL",
+    "1": "AI / FAKE"
   },
-  "total_languages": 16,
-  "languages_list": [
-    "Assamese",
-    "Bengali",
-    "Bodo",
-    "Dogri",
-    "English",
-    "Gujarati",
-    "Hindi",
-    "Kannada",
-    "Malayalam",
-    "Manipuri",
-    "Marathi",
-    "Nepali",
-    "Odia",
-    "Sanskrit",
-    "Tamil",
-    "Telugu"
-  ],
-  "samples_per_language": {
-    "Assamese": 2000,
-    "Bodo": 2000,
-    "Dogri": 2000,
-    "Kannada": 2000,
-    "Malayalam": 2000,
-    "Marathi": 2000,
-    "Sanskrit": 2000,
-    "Nepali": 2000,
-    "English": 2000,
-    "Telugu": 2000,
-    "Hindi": 2000,
-    "Manipuri": 2000,
-    "Tamil": 1915,
-    "Odia": 1824,
-    "Bengali": 1801,
-    "Gujarati": 1562
-  },
-  "language_by_label": {
-    "Assamese": {
-      "0": 1001,
-      "1": 999
+  "splits": {
+    "train": {
+      "total": 598,
+      "real": 296,
+      "fake": 302
     },
-    "Bengali": {
-      "0": 898,
-      "1": 903
+    "validation": {
+      "total": 128,
+      "real": 63,
+      "fake": 65
     },
-    "Bodo": {
-      "0": 1003,
-      "1": 997
-    },
-    "Dogri": {
-      "0": 1000,
-      "1": 1000
-    },
-    "English": {
-      "0": 1000,
-      "1": 1000
-    },
-    "Gujarati": {
-      "0": 779,
-      "1": 783
-    },
-    "Hindi": {
-      "0": 1000,
-      "1": 1000
-    },
-    "Kannada": {
-      "0": 999,
-      "1": 1001
-    },
-    "Malayalam": {
-      "0": 1004,
-      "1": 996
-    },
-    "Manipuri": {
-      "0": 1000,
-      "1": 1000
-    },
-    "Marathi": {
-      "0": 1003,
-      "1": 997
-    },
-    "Nepali": {
-      "0": 999,
-      "1": 1001
-    },
-    "Odia": {
-      "0": 911,
-      "1": 913
-    },
-    "Sanskrit": {
-      "0": 1002,
-      "1": 998
-    },
-    "Tamil": {
-      "0": 959,
-      "1": 956
-    },
-    "Telugu": {
-      "0": 1000,
-      "1": 1000
+    "test": {
+      "total": 128,
+      "real": 64,
+      "fake": 64
     }
   },
-  "audio_properties": {
-    "native_sample_rates": [
-      44100
-    ],
-    "target_model_sample_rate": 16000,
-    "duration_stats_sec": {
-      "min": 0.13,
-      "max": 11.99,
-      "mean": 5.56,
-      "std": 2.39
-    },
-    "audited_samples_count": 492,
-    "corrupt_samples_found": 0
+  "durations_sec": {
+    "real_avg": 51.63,
+    "real_min": 2.4,
+    "real_max": 2170.32,
+    "fake_avg": 15.91,
+    "fake_min": 3.84,
+    "fake_max": 64.49
   }
 }

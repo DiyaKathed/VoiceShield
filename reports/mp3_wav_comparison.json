@@ -1,0 +1,60 @@
+{
+  "comparison": [
+    {
+      "file": "human.wav",
+      "format": "wav",
+      "duration": 8.7,
+      "sample_rate": 16000,
+      "original_sample_rate": 44100,
+      "ai_probability": 0.0399,
+      "human_probability": 0.9601,
+      "voice_risk_score": 4.0,
+      "risk_status": "LOW RISK",
+      "classification": "GENUINE HUMAN SPEECH",
+      "confidence": 0.9601,
+      "total_chunks": 8
+    },
+    {
+      "file": "human.mp3",
+      "format": "mp3",
+      "duration": 8.7,
+      "sample_rate": 16000,
+      "original_sample_rate": 44100,
+      "ai_probability": 0.6763,
+      "human_probability": 0.3237,
+      "voice_risk_score": 67.6,
+      "risk_status": "MEDIUM RISK",
+      "classification": "SUSPICIOUS / ANOMALOUS SPEECH",
+      "confidence": 0.6763,
+      "total_chunks": 8
+    },
+    {
+      "file": "ai.wav",
+      "format": "wav",
+      "duration": 9.75,
+      "sample_rate": 16000,
+      "original_sample_rate": 44100,
+      "ai_probability": 0.9285,
+      "human_probability": 0.0715,
+      "voice_risk_score": 92.9,
+      "risk_status": "HIGH RISK",
+      "classification": "SYNTHETIC / AI VOICE CLONE",
+      "confidence": 0.9285,
+      "total_chunks": 9
+    },
+    {
+      "file": "ai.mp3",
+      "format": "mp3",
+      "duration": 9.75,
+      "sample_rate": 16000,
+      "original_sample_rate": 44100,
+      "ai_probability": 0.9269,
+      "human_probability": 0.0731,
+      "voice_risk_score": 92.7,
+      "risk_status": "HIGH RISK",
+      "classification": "SYNTHETIC / AI VOICE CLONE",
+      "confidence": 0.9269,
+      "total_chunks": 9
+    }
+  ]
+}

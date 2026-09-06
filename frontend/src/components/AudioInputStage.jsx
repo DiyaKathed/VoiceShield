@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  UploadCloud, Mic, Square, Play, Sparkles, DollarSign, 
+import {
+  UploadCloud, Mic, Square, Play, Sparkles, DollarSign,
   UserCheck, AlertTriangle, ShieldCheck, FileAudio, Trash2,
   Shield, CheckCircle2, RefreshCw, Volume2, ArrowRight
 } from 'lucide-react';
@@ -20,7 +20,7 @@ export default function AudioInputStage({
 }) {
   const [activeTab, setActiveTab] = useState('demo'); // 'upload', 'record', 'demo'
   const [samples, setSamples] = useState([]);
-  const [selectedDemoId, setSelectedDemoId] = useState('indic_hindi_synthetic_clone.wav');
+  const [selectedDemoId, setSelectedDemoId] = useState('sample_fake_01.wav');
   const [audioDuration, setAudioDuration] = useState(null);
 
   // Microphone recording state
@@ -86,7 +86,7 @@ export default function AudioInputStage({
       const arrayBuffer = await blob.arrayBuffer();
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      
+
       const numChannels = 1;
       const sampleRate = audioBuffer.sampleRate;
       const bitDepth = 16;
@@ -95,16 +95,16 @@ export default function AudioInputStage({
       const channelData = audioBuffer.getChannelData(0);
       const dataLength = channelData.length * bytesPerSample;
       const bufferLength = 44 + dataLength;
-      
+
       const buffer = new ArrayBuffer(bufferLength);
       const view = new DataView(buffer);
-      
+
       const writeString = (v, offset, str) => {
         for (let i = 0; i < str.length; i++) {
           v.setUint8(offset + i, str.charCodeAt(i));
         }
       };
-      
+
       writeString(view, 0, 'RIFF');
       view.setUint32(4, 36 + dataLength, true);
       writeString(view, 8, 'WAVE');
@@ -118,7 +118,7 @@ export default function AudioInputStage({
       view.setUint16(34, bitDepth, true);
       writeString(view, 36, 'data');
       view.setUint32(40, dataLength, true);
-      
+
       let offset = 44;
       for (let i = 0; i < channelData.length; i++) {
         let sample = Math.max(-1, Math.min(1, channelData[i]));
@@ -126,7 +126,7 @@ export default function AudioInputStage({
         view.setInt16(offset, sample, true);
         offset += 2;
       }
-      
+
       return new Blob([view], { type: 'audio/wav' });
     } catch (err) {
       console.warn("PCM conversion fallback:", err);
@@ -225,7 +225,7 @@ export default function AudioInputStage({
       <div className="input-card">
         {/* Tab Navigation */}
         <div className="tab-nav">
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'upload' ? 'active' : ''}`}
             onClick={() => setActiveTab('upload')}
           >
@@ -233,7 +233,7 @@ export default function AudioInputStage({
             <span>Upload Audio</span>
           </button>
 
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'record' ? 'active' : ''}`}
             onClick={() => setActiveTab('record')}
           >
@@ -241,7 +241,7 @@ export default function AudioInputStage({
             <span>Record Voice Live</span>
           </button>
 
-          <button 
+          <button
             className={`tab-btn ${activeTab === 'demo' ? 'active' : ''}`}
             onClick={() => setActiveTab('demo')}
           >
@@ -254,9 +254,9 @@ export default function AudioInputStage({
         {activeTab === 'upload' && (
           <div className="tab-content upload-tab">
             <label className="upload-dropzone">
-              <input 
-                type="file" 
-                accept="audio/*,.wav,.mp3,.webm,.ogg,.flac" 
+              <input
+                type="file"
+                accept=".mp3,.wav,audio/mp3,audio/wav,audio/mpeg,audio/*"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
               />
@@ -267,7 +267,7 @@ export default function AudioInputStage({
                 <strong>Click to Browse</strong> or drag and drop audio file
               </div>
               <div className="dropzone-hint">
-                Supports WAV, MP3, FLAC, WebM, AAC (16kHz mono recommended)
+                Supported formats: MP3, WAV
               </div>
             </label>
           </div>
@@ -310,7 +310,7 @@ export default function AudioInputStage({
         {activeTab === 'demo' && (
           <div className="tab-content demo-tab">
             <p className="demo-hint">
-              Select an authentic Indian voice sample from the IndicTTS Challenge test split:
+              Select an authentic voice sample from the deepfake benchmark test split:
             </p>
             <div className="demo-grid">
               {samples.map(sample => {
@@ -346,7 +346,20 @@ export default function AudioInputStage({
                 <div>
                   <div className="audio-filename">{currentFilename || "Selected Audio"}</div>
                   <div className="audio-meta">
-                    {audioDuration ? `${audioDuration.toFixed(1)}s Duration` : 'Standard 16kHz'} • Forensic Buffer Loaded
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(6, 182, 212, 0.15)',
+                      color: 'var(--accent-cyan)',
+                      fontWeight: 700,
+                      marginRight: '8px',
+                      fontSize: '0.75rem',
+                      letterSpacing: '0.5px'
+                    }}>
+                      {currentFilename ? (currentFilename.toLowerCase().endsWith('.mp3') ? 'FORMAT: MP3' : (currentFilename.toLowerCase().endsWith('.wav') ? 'FORMAT: WAV' : 'AUDIO')) : 'MP3 / WAV'}
+                    </span>
+                    {audioDuration ? `${audioDuration.toFixed(1)}s Duration` : 'Standard 16kHz'} • Forensic Buffer Ready
                   </div>
                 </div>
               </div>
@@ -357,10 +370,10 @@ export default function AudioInputStage({
               </button>
             </div>
 
-            <audio 
+            <audio
               ref={audioRef}
-              controls 
-              src={currentAudioUrl} 
+              controls
+              src={currentAudioUrl}
               className="native-audio-player"
               onLoadedMetadata={handleAudioLoadedMetadata}
             />
@@ -376,9 +389,9 @@ export default function AudioInputStage({
           <div className="context-inputs-grid">
             <div className="form-group">
               <label>Caller Name</label>
-              <input 
-                type="text" 
-                value={transactionContext.caller_name} 
+              <input
+                type="text"
+                value={transactionContext.caller_name}
                 onChange={(e) => setTransactionContext({ ...transactionContext, caller_name: e.target.value })}
                 placeholder="e.g. Vikram Singhania"
               />
@@ -386,9 +399,9 @@ export default function AudioInputStage({
 
             <div className="form-group">
               <label>Caller Role</label>
-              <input 
-                type="text" 
-                value={transactionContext.caller_role} 
+              <input
+                type="text"
+                value={transactionContext.caller_role}
                 onChange={(e) => setTransactionContext({ ...transactionContext, caller_role: e.target.value })}
                 placeholder="e.g. Managing Director"
               />
@@ -396,9 +409,9 @@ export default function AudioInputStage({
 
             <div className="form-group">
               <label>Amount (USD / INR)</label>
-              <input 
-                type="number" 
-                value={transactionContext.amount} 
+              <input
+                type="number"
+                value={transactionContext.amount}
                 onChange={(e) => setTransactionContext({ ...transactionContext, amount: parseFloat(e.target.value) || 0 })}
                 placeholder="5000000"
               />
@@ -406,7 +419,7 @@ export default function AudioInputStage({
 
             <div className="form-group">
               <label>Biometric Verification</label>
-              <select 
+              <select
                 value={transactionContext.speaker_verification}
                 onChange={(e) => setTransactionContext({ ...transactionContext, speaker_verification: e.target.value })}
               >
@@ -420,7 +433,7 @@ export default function AudioInputStage({
 
         {/* Primary Action Button: Analyze the Voice */}
         <div className="analyze-action-container">
-          <button 
+          <button
             className="btn-primary-analyze"
             onClick={handleTriggerAnalysis}
             disabled={isLoading || (!currentAudioBlob && !currentAudioUrl)}
@@ -439,7 +452,7 @@ export default function AudioInputStage({
             )}
           </button>
           <div className="analyze-hint">
-            Direct local PyTorch inference via VoiceShield IndicTTS model. Zero external APIs.
+            Direct local PyTorch inference via VoiceShieldNet model. Zero external APIs.
           </div>
         </div>
       </div>

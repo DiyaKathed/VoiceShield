@@ -38,19 +38,52 @@ class RealTimeChunkAnalyzer:
         and generates chronological timeline.
         """
         duration = len(audio) / sr
+
+        # Detect silence or non-speech audio before passing to model
+        from ml.features import is_sufficient_speech
+        is_sufficient, active_speech_sec = is_sufficient_speech(audio, sr=sr)
+        if not is_sufficient:
+            return {
+                "total_duration": round(duration, 2),
+                "total_chunks": 0,
+                "chunks": [],
+                "partial_spoof_detected": False,
+                "peak_ai_probability": 0.0,
+                "min_ai_probability": 0.0,
+                "mean_ai_probability": 0.0,
+                "median_ai_probability": 0.0,
+                "trimmed_mean_ai_probability": 0.0,
+                "aggregated_ai_probability": 0.0,
+                "classification": "INSUFFICIENT_SPEECH",
+                "human_probability": 0.0,
+                "voice_risk_score": 0.0,
+                "is_insufficient_speech": True,
+                "speech_duration": round(active_speech_sec, 2),
+                "high_risk_chunk_count": 0,
+                "low_risk_chunk_count": 0
+            }
+
         segments = self.feature_extractor.segment_audio(audio, overlap=0.5)
 
         if len(segments) == 0:
             return {
                 "total_duration": round(duration, 2),
+                "total_chunks": 0,
                 "chunks": [],
                 "partial_spoof_detected": False,
                 "peak_ai_probability": 0.0,
+                "min_ai_probability": 0.0,
                 "mean_ai_probability": 0.0,
+                "median_ai_probability": 0.0,
+                "trimmed_mean_ai_probability": 0.0,
                 "aggregated_ai_probability": 0.0,
                 "classification": "GENUINE HUMAN",
                 "human_probability": 1.0,
-                "voice_risk_score": 0.0
+                "voice_risk_score": 0.0,
+                "is_insufficient_speech": False,
+                "speech_duration": round(duration, 2),
+                "high_risk_chunk_count": 0,
+                "low_risk_chunk_count": 0
             }
 
         features_list = []
@@ -92,7 +125,7 @@ class RealTimeChunkAnalyzer:
                 "ai_probability": round(ai_prob_clamped, 4),
                 "human_probability": round(human_prob, 4),
                 "risk_level": risk_level,
-                "classification": "AI_GENERATED" if ai_prob_clamped >= 0.5 else "HUMAN",
+                "classification": "AI_GENERATED" if ai_prob_clamped >= self.threshold else "HUMAN",
                 "is_suspicious": ai_prob_clamped >= 0.60
             })
 
@@ -119,10 +152,10 @@ class RealTimeChunkAnalyzer:
             else:
                 consecutive_high = 0
 
-        # Partial spoofing requires meaningful sustained synthetic content (2+ chunks or >=25% of chunks)
+        # Partial spoofing requires meaningful sustained synthetic content (>= 3 consecutive chunks or >= 35% of chunks)
         partial_spoof_detected = (
-            (max_consecutive_high >= 2 and low_risk_chunks >= 2) or
-            (high_risk_chunks >= max(2, int(len(probs) * 0.25)) and low_risk_chunks >= 2)
+            (max_consecutive_high >= 3 and low_risk_chunks >= 2) or
+            (high_risk_chunks >= max(3, int(len(probs) * 0.35)) and low_risk_chunks >= 2)
         )
 
         # Robust recording-level aggregation:
@@ -146,7 +179,9 @@ class RealTimeChunkAnalyzer:
             "aggregated_ai_probability": round(aggregated_ai_prob, 4),
             "high_risk_chunk_count": high_risk_chunks,
             "low_risk_chunk_count": low_risk_chunks,
-            "partial_spoof_detected": partial_spoof_detected
+            "partial_spoof_detected": partial_spoof_detected,
+            "is_insufficient_speech": False,
+            "speech_duration": round(active_speech_sec, 2)
         }
 
 

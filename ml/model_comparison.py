@@ -1,7 +1,7 @@
 """
 VoiceShield Model Comparison Pipeline
 =====================================
-Directly benchmarks multiple anti-spoofing architectures on the EXACT SAME held-out IndicTTS test split:
+Directly benchmarks multiple anti-spoofing architectures on the EXACT SAME held-out Kaggle test split:
 1. Current VoiceShieldNet (3-channel Spectro-Temporal Residual CNN)
 2. Baseline CNN (Classic 2D Mel Spectrogram CNN)
 3. AASIST (SincNet + Residual Graph Attention Network)
@@ -31,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from ml.features import AudioFeatureExtractor
-from ml.dataset import IndicTTSDataset
+from ml.dataset import VoiceShieldDataset
 from ml.model import VoiceShieldNet
 from ml.models.baseline_cnn import BaselineCNN
 from ml.models.aasist import AASIST
@@ -230,9 +230,9 @@ def run_full_model_comparison(train_samples: int = 1600, val_samples: int = 400,
     te_sub = get_balanced(test_df, test_samples)
 
     fe = AudioFeatureExtractor()
-    train_ds = IndicTTSDataset(tr_sub, feature_extractor=fe, augment=True)
-    val_ds = IndicTTSDataset(v_sub, feature_extractor=fe, augment=False)
-    test_ds = IndicTTSDataset(te_sub, feature_extractor=fe, augment=False)
+    train_ds = VoiceShieldDataset(tr_sub, feature_extractor=fe, augment=True)
+    val_ds = VoiceShieldDataset(v_sub, feature_extractor=fe, augment=False)
+    test_ds = VoiceShieldDataset(te_sub, feature_extractor=fe, augment=False)
 
     train_ds.preload_audio()
     val_ds.preload_audio()
@@ -242,7 +242,7 @@ def run_full_model_comparison(train_samples: int = 1600, val_samples: int = 400,
 
     # 1. Evaluate Current VoiceShieldNet
     print("\n--- 1. Evaluating Trained VoiceShieldNet ---")
-    vs_path = MODELS_DIR / "voiceshield_indictts_best.pt"
+    vs_path = MODELS_DIR / "voiceshield_model.pt"
     cal_file = MODELS_DIR / "calibration_config.json"
     vs_temp, vs_thresh = 1.0, 0.50
     if cal_file.exists():

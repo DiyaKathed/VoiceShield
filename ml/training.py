@@ -1,18 +1,18 @@
 """
-VoiceShield IndicTTS Training Pipeline
-======================================
-Trains the VoiceShieldNet binary deepfake classifier on the IndicTTS Deepfake Challenge dataset.
+VoiceShield Training Pipeline
+=============================
+Trains the VoiceShieldNet binary deepfake classifier on the Kaggle Fake and Real Audio Dataset.
 Tracks Loss, Accuracy, Precision, Recall, F1 score.
-Saves the best model checkpoint to models/voiceshield_indictts_best.pt
+Saves the best model checkpoint to models/voiceshield_model.pt
 and training configuration to models/training_config.json.
 """
 
-from numba.core.types import Optional
 import os
 import sys
 import json
 import yaml
 import argparse
+from typing import Optional, List, Dict, Tuple
 import numpy as np
 import pandas as pd
 import torch
@@ -26,7 +26,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from ml.features import AudioFeatureExtractor
 from ml.model import VoiceShieldNet
-from ml.dataset import IndicTTSDataset
+from ml.dataset import VoiceShieldDataset
 
 
 MODELS_DIR = BASE_DIR / "models"
@@ -60,7 +60,7 @@ def train_epoch(model, loader, optimizer, criterion, device, epoch: int = 1, tot
         all_preds.extend(preds.flatten())
         all_targets.extend(labels.long().cpu().numpy().flatten())
 
-        if b_idx % 15 == 0 or b_idx == total_batches:
+        if b_idx % 10 == 0 or b_idx == total_batches:
             batch_loss = loss.item()
             running_acc = accuracy_score(all_targets, all_preds)
             print(f"  [Epoch {epoch}/{total_epochs} - Batch {b_idx}/{total_batches}] Batch Loss: {batch_loss:.4f} | Running Acc: {running_acc*100:.1f}%", flush=True)
@@ -102,7 +102,7 @@ def validate_epoch(model, loader, criterion, device):
     rec = recall_score(all_targets, all_preds, zero_division=0)
     f1 = f1_score(all_targets, all_preds, zero_division=0)
 
-    # False Positive Rate on real human speech (is_tts=0)
+    # False Positive Rate on real human speech (label=0)
     cm = confusion_matrix(all_targets, all_preds)
     if cm.shape == (2, 2):
         tn, fp, fn, tp = cm.ravel()
@@ -115,16 +115,16 @@ def validate_epoch(model, loader, criterion, device):
 
 def run_training(
     epochs: int = 8,
-    batch_size: int = 32,
+    batch_size: int = 16,
     lr: float = 5e-4,
     max_train_samples: Optional[int] = None,
     max_val_samples: Optional[int] = None,
     augment: bool = True,
-    output_model: str = str(MODELS_DIR / "voiceshield_indictts_best.pt"),
+    output_model: str = str(MODELS_DIR / "voiceshield_model.pt"),
     seed: int = 42
 ):
     print("=" * 70)
-    print("VoiceShield: Training Deepfake Classifier on IndicTTS Dataset")
+    print("VoiceShield: Training Deepfake Classifier on Kaggle Audio Dataset")
     print("=" * 70)
 
     torch.manual_seed(seed)
@@ -144,17 +144,17 @@ def run_training(
     train_csv = SPLITS_DIR / "train.csv"
     val_csv = SPLITS_DIR / "val.csv"
     if not train_csv.exists() or not val_csv.exists():
-        raise FileNotFoundError("Splits not found. Run scripts/create_indic_splits.py first.")
+        raise FileNotFoundError("Splits not found. Run scripts/prepare_kaggle_splits.py first.")
 
     train_df = pd.read_csv(train_csv)
     val_df = pd.read_csv(val_csv)
 
     print(f"[+] Total Available in Splits: Train={len(train_df):,}, Val={len(val_df):,}")
 
-    # Enforce strictly balanced 50/50 Real/AI sampling when capping
+    # Enforce strictly balanced Real/AI sampling when capping
     if max_train_samples and max_train_samples < len(train_df):
-        df_real = train_df[train_df['is_tts'] == 0]
-        df_ai = train_df[train_df['is_tts'] == 1]
+        df_real = train_df[train_df['label'] == 0]
+        df_ai = train_df[train_df['label'] == 1]
         half = max_train_samples // 2
         train_df = pd.concat([
             df_real.sample(n=min(half, len(df_real)), random_state=seed),
@@ -163,8 +163,8 @@ def run_training(
 
     val_cap = max_val_samples or (int(max_train_samples * 0.25) if max_train_samples else None)
     if val_cap and val_cap < len(val_df):
-        v_real = val_df[val_df['is_tts'] == 0]
-        v_ai = val_df[val_df['is_tts'] == 1]
+        v_real = val_df[val_df['label'] == 0]
+        v_ai = val_df[val_df['label'] == 1]
         v_half = val_cap // 2
         val_df = pd.concat([
             v_real.sample(n=min(v_half, len(v_real)), random_state=seed),
@@ -172,21 +172,21 @@ def run_training(
         ]).sample(frac=1.0, random_state=seed).reset_index(drop=True)
 
     feature_extractor = AudioFeatureExtractor()
-    train_dataset = IndicTTSDataset(
+    train_dataset = VoiceShieldDataset(
         train_df,
         feature_extractor=feature_extractor,
         augment=augment
     )
-    val_dataset = IndicTTSDataset(
+    val_dataset = VoiceShieldDataset(
         val_df,
         feature_extractor=feature_extractor,
         augment=False
     )
 
-    print(f"[+] Active Training Samples: {len(train_dataset)} (Balanced 50/50 Real/AI)")
-    print(f"[+] Active Validation Samples: {len(val_dataset)} (Balanced 50/50 Real/AI)")
+    print(f"[+] Active Training Samples: {len(train_dataset)}")
+    print(f"[+] Active Validation Samples: {len(val_dataset)}")
 
-    # Preload all audio in sequential row-group order to avoid disk thrashing
+    # Preload all audio in RAM to avoid disk latency
     train_dataset.preload_audio()
     val_dataset.preload_audio()
 
@@ -202,6 +202,7 @@ def run_training(
 
     best_val_loss = float("inf")
     best_val_f1 = 0.0
+    best_val_acc = 0.0
     best_val_fpr = 1.0
     best_epoch = 0
     best_val_logits = None
@@ -230,9 +231,10 @@ def run_training(
             "val_fpr": round(v_fpr, 4)
         })
 
-        # Save best model checkpoint (prioritize low val loss and low human false positive rate)
+        # Save best model checkpoint (prioritize low val loss)
         if v_loss < best_val_loss:
             best_val_loss = v_loss
+            best_val_acc = v_acc
             best_val_f1 = v_f1
             best_val_fpr = v_fpr
             best_epoch = epoch
@@ -246,13 +248,12 @@ def run_training(
                 "val_acc": v_acc,
                 "val_f1": v_f1,
                 "val_fpr": v_fpr,
-                "dataset_name": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
-                "target_sr": 16000,
-                "languages": sorted(train_df['language'].unique().tolist())
+                "dataset_name": "pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
+                "target_sr": 16000
             }, output_model)
 
     print("-" * 85)
-    print(f"[✓] Best model checkpoint saved to: {output_model} (Epoch {best_epoch}, Val Loss: {best_val_loss:.4f}, Val F1: {best_val_f1*100:.1f}%, Val FPR: {best_val_fpr*100:.1f}%)")
+    print(f"[✓] Best model checkpoint saved to: {output_model} (Epoch {best_epoch}, Val Loss: {best_val_loss:.4f}, Val Acc: {best_val_acc*100:.1f}%, Val F1: {best_val_f1*100:.1f}%)")
 
     # Run temperature scaling and threshold calibration on validation set
     calibration_info = {}
@@ -266,20 +267,21 @@ def run_training(
 
     # Save training configuration
     config_data = {
-        "dataset": "SherryT997/IndicTTS-Deepfake-Challenge-Data",
+        "dataset": "pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
+        "dataset_url": "https://www.kaggle.com/datasets/pawarrohitashok/fake-and-real-audio-dataset-deepfake-data",
         "model_architecture": "VoiceShieldNet (Spectro-Temporal Residual CNN)",
-        "languages_trained": sorted(train_df['language'].unique().tolist()),
         "sample_rate": 16000,
         "n_mels": 64,
         "epochs_trained": epochs,
         "best_epoch": best_epoch,
         "best_val_loss": round(best_val_loss, 4),
+        "best_val_acc": round(best_val_acc, 4),
         "best_val_f1": round(best_val_f1, 4),
         "best_val_fpr": round(best_val_fpr, 4),
         "batch_size": batch_size,
         "learning_rate": lr,
         "random_seed": seed,
-        "split_method": "Disjoint Speaker Group Splitting (Zero Speaker Leakage)",
+        "split_method": "Stratified 70/15/15 Split (seed=42)",
         "augmentation_enabled": augment,
         "active_train_samples": len(train_dataset),
         "active_val_samples": len(val_dataset),
@@ -292,29 +294,23 @@ def run_training(
         json.dump(config_data, f, indent=2)
     print(f"[✓] Saved training configuration to: {config_path}")
 
-    # Also update primary backend weights at models/voiceshield_model.pt
-    default_model_path = MODELS_DIR / "voiceshield_model.pt"
-    import shutil
-    shutil.copyfile(output_model, default_model_path)
-    print(f"[✓] Updated primary backend model weights at: {default_model_path}")
-
     return config_data
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train VoiceShield on IndicTTS Dataset")
+    parser = argparse.ArgumentParser(description="Train VoiceShield on Kaggle Audio Dataset")
     parser.add_argument("--epochs", type=int, default=8, help="Number of epochs")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size")
     parser.add_argument("--lr", type=float, default=5e-4, help="Learning rate")
     parser.add_argument("--max-samples", type=int, default=None, help="Sample cap for fast smoke testing")
-    parser.add_argument("--smoke-test", action="store_true", help="Run quick 300-sample smoke test")
-    parser.add_argument("--no-augment", action="store_true", help="Disable data augmentation (clean training)")
-    parser.add_argument("--output", type=str, default=str(MODELS_DIR / "voiceshield_indictts_best.pt"), help="Output model path")
+    parser.add_argument("--smoke-test", action="store_true", help="Run quick 100-sample smoke test")
+    parser.add_argument("--no-augment", action="store_true", help="Disable data augmentation")
+    parser.add_argument("--output", type=str, default=str(MODELS_DIR / "voiceshield_model.pt"), help="Output model path")
     args = parser.parse_args()
 
-    max_train = 300 if args.smoke_test else args.max_samples
-    max_val = 60 if args.smoke_test else None
-    epochs = 4 if args.smoke_test else args.epochs
+    max_train = 100 if args.smoke_test else args.max_samples
+    max_val = 30 if args.smoke_test else None
+    epochs = 3 if args.smoke_test else args.epochs
 
     run_training(
         epochs=epochs,

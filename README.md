@@ -47,22 +47,27 @@ SIH/
 ├── ml/                         # Core Machine Learning & Signal Processing
 │   ├── features.py             # 16kHz resampling, VAD, Log-Mel + Deltas extractor
 │   ├── model.py                # VoiceShieldNet PyTorch neural architecture
-│   └── dataset.py              # Disjoint speaker dataset loader & SpecAugment
+│   ├── dataset.py              # Kaggle dataset loader with RAM preloading & SpecAugment
+│   ├── training.py             # PyTorch training pipeline with CosineAnnealingLR & calibration
+│   ├── evaluation.py           # Authenticated evaluation metrics calculation & plotting
+│   └── inference.py            # Standalone and backend inference engine
 ├── data/                       # Datasets & manifests
-│   ├── train/                  # Training split audio files
-│   ├── val/                    # Validation split audio files
-│   ├── test/                   # Unseen test split audio files
+│   ├── raw/                    # Downloaded Kaggle RAW audio files (real/ and fake/)
+│   ├── train/                  # Training split audio files (real/ and fake/)
+│   ├── val/                    # Validation split audio files (real/ and fake/)
+│   ├── test/                   # Unseen test split audio files (real/ and fake/)
 │   ├── sample_demo/            # Interactive 1-click test audio files
-│   └── dataset_manifest.csv    # Manifest metadata (filepath, label, speaker_id)
+│   ├── splits/                 # Split manifests (train.csv, val.csv, test.csv, split_summary.json)
+│   └── dataset_manifest.csv    # Full dataset manifest (854 files, labels, durations)
 ├── models/                     # Saved model artifacts
 │   ├── voiceshield_model.pt    # PyTorch trained weights checkpoint
-│   ├── config.json             # Hyperparameters & audio config
+│   ├── training_config.json    # Hyperparameters & audio config
+│   ├── calibration_config.json # Learned temperature scaling parameters
 │   └── eval_metrics.json       # Genuine evaluation metrics from test set
-├── scripts/                    # Reproducible ML pipeline scripts
-│   ├── generate_sample_data.py # Synthesizes benchmark human & cloned dataset
-│   ├── training.py             # Model training loop with CosineAnnealingLR
-│   ├── evaluation.py           # Calculates Accuracy, F1, ROC-AUC, EER
-│   └── inference.py            # Standalone CLI inference tool
+├── scripts/                    # Ingestion & audit utility scripts
+│   ├── download_kaggle_dataset.py # Automated Kaggle dataset downloader
+│   ├── prepare_kaggle_splits.py   # Stratified split generator (70/15/15)
+│   └── audit_dataset.py           # Audits audio metadata & distributions
 └── README.md
 ```
 
@@ -98,53 +103,65 @@ cd ..
 
 ## Reproducing Dataset, Training & Evaluation
 
-### Step 1: Generate Benchmark Speech Dataset
-Generate balanced, disjoint speaker partitions for training, validation, and testing:
+### Step 1: Ingest and Partition the Kaggle Deepfake Dataset
+Download and extract the Kaggle dataset (`pawarrohitashok/fake-and-real-audio-dataset-deepfake-data`), then create stratified 70% / 15% / 15% train, validation, and test splits:
 ```bash
-python scripts/generate_sample_data.py
-```
-This produces:
-- `data/train/` (10 genuine human, 10 AI cloned; speakers h1–h5, c1–c5)
-- `data/val/` (2 genuine human, 2 AI cloned; speakers h6, c6)
-- `data/test/` (4 genuine human, 4 AI cloned; strictly unseen speakers h7–h8, c7–c8)
-- `data/sample_demo/` (3 demo files: genuine employee, AI executive fraud, and spliced attack)
-- `data/dataset_manifest.csv`
+# 1. Download and extract raw audio files (423 Real, 431 Fake)
+python scripts/download_kaggle_dataset.py
 
-> **Using External Benchmarks (ASVspoof / Fake-or-Real):**  
-> To train on the ASVspoof 2019/2021 Logical Access (LA) dataset, download the dataset from [asvspoof.org](https://www.asvspoof.org) and structure your CSV with columns `filepath,label,speaker_id,split` where `label=0` for bona fide human and `label=1` for spoof. `ml/dataset.py` natively reads this format.
+# 2. Partition into train/val/test splits and create manifests
+python scripts/prepare_kaggle_splits.py
+
+# 3. Optional: Run dataset audit report
+python scripts/audit_dataset.py
+```
+This structures:
+- `data/train/` (598 files: 296 Real, 302 Fake)
+- `data/val/` (128 files: 63 Real, 65 Fake)
+- `data/test/` (128 files: 64 Real, 64 Fake)
+- `data/sample_demo/` (Interactive sample audio files for instant UI testing)
+- `data/dataset_manifest.csv` and `data/splits/{train.csv, val.csv, test.csv, split_summary.json}`
+
+> **Note on Speaker-Disjoint Splitting:**  
+> The Kaggle dataset provides sequentially indexed audio recordings (`real_001.wav`–`real_423.wav`, `fake_001.wav`–`fake_431.wav`) without ground-truth speaker metadata or actor identities. Consequently, speaker-disjoint isolation cannot be strictly enforced; a stratified random partition with fixed seed (`42`) is applied across Real and Fake classes to ensure balanced representation and completely deterministic evaluation without data leakage.
 
 ### Step 2: Train the Model
-Train `VoiceShieldNet` with AdamW and Cosine Annealing:
+Train `VoiceShieldNet` with AdamW, Cosine Annealing, and post-hoc temperature calibration:
 ```bash
-python scripts/training.py --epochs 20 --lr 0.0005 --batch-size 4
+python ml/training.py --epochs 8 --batch-size 32 --lr 0.001 --use-calibrated
 ```
-The checkpoint is saved to `models/voiceshield_model.pt`.
+The best checkpoint is automatically saved to `models/voiceshield_model.pt`.
 
 ### Step 3: Run Evaluation on Unseen Test Set
-Calculate authentic metrics on the unseen test set:
+Calculate authentic metrics on the held-out test split (128 files: 64 Real, 64 AI):
 ```bash
-python scripts/evaluation.py
+python ml/evaluation.py
 ```
 Outputs:
-- **Accuracy**: $100.0\%$
-- **Precision**: $100.0\%$
-- **Recall**: $100.0\%$
-- **F1-Score**: $100.0\%$
-- **ROC-AUC**: $1.0000$
-- **Equal Error Rate (EER)**: $0.00\%$ at optimal threshold $0.7556$
-- **Confusion Matrix**: True Negatives: 4, True Positives: 4, False Positives: 0, False Negatives: 0
+- **Accuracy**: $89.06\%$
+- **Precision**: $87.88\%$
+- **Recall**: $90.62\%$
+- **Specificity**: $87.50\%$
+- **F1-Score**: $89.23\%$
+- **ROC-AUC**: $0.9546$
+- **Equal Error Rate (EER)**: $13.28\%$ at decision threshold $0.5486$
+- **Confusion Matrix**:
+  - True Negatives (Human correctly identified): 56
+  - False Positives (Human misclassified as AI): 8
+  - False Negatives (AI misclassified as Human): 6
+  - True Positives (AI correctly identified): 58
 
 ### Step 4: Standalone CLI Inference
-Run inference directly on any audio file:
+Run inference directly on any WAV or MP3 audio file:
 ```bash
-# Test on synthetic wire fraud audio
-python scripts/inference.py --file data/sample_demo/sample_ai_cloned_fraud.wav
+# Test on genuine human audio (Real)
+python ml/inference.py --audio data/test/real/real_004.wav
 
-# Test on genuine human audio
-python scripts/inference.py --file data/sample_demo/sample_genuine_human.wav
+# Test on synthetic deepfake audio (Fake)
+python ml/inference.py --audio data/test/fake/fake_005.wav
 
-# Output as JSON
-python scripts/inference.py --file data/sample_demo/sample_spliced_attack.wav --json
+# Batch test an entire directory with JSON output
+python ml/inference.py --audio data/test/real/real_001.wav --json
 ```
 
 ---

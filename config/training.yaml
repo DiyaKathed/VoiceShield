@@ -1,51 +1,37 @@
-# VoiceShield IndicTTS Training & Augmentation Configuration
+# VoiceShield Training & Augmentation Configuration
 dataset:
-  name: "SherryT997/IndicTTS-Deepfake-Challenge-Data"
-  data_dir: "dataindictts/data"
+  name: "pawarrohitashok/fake-and-real-audio-dataset-deepfake-data"
+  url: "https://www.kaggle.com/datasets/pawarrohitashok/fake-and-real-audio-dataset-deepfake-data"
+  train_dir: "data/train"
+  val_dir: "data/val"
+  test_dir: "data/test"
+  manifest: "data/dataset_manifest.csv"
   splits_dir: "data/splits"
   sample_rate: 16000
-  target_languages:
-    - "Assamese"
-    - "Bengali"
-    - "Bodo"
-    - "Dogri"
-    - "English"
-    - "Gujarati"
-    - "Hindi"
-    - "Kannada"
-    - "Malayalam"
-    - "Manipuri"
-    - "Marathi"
-    - "Nepali"
-    - "Odia"
-    - "Sanskrit"
-    - "Tamil"
-    - "Telugu"
 
 split:
   train_ratio: 0.70
   val_ratio: 0.15
   test_ratio: 0.15
   random_seed: 42
-  disjoint_speaker_splitting: true
+  stratified_splitting: true
 
 model:
-  name: "VoiceShieldNet-IndicTTS"
+  name: "VoiceShieldNet"
   architecture: "Spectro-Temporal Residual CNN with Delta Features"
   in_channels: 3
   n_mels: 64
   n_fft: 1024
   hop_length: 512
-  chunk_duration_sec: 1.5
+  chunk_duration_sec: 2.0
 
 training:
-  epochs: 10
+  epochs: 8
   batch_size: 16
   learning_rate: 0.0005
   weight_decay: 0.0001
-  early_stopping_patience: 4
   checkpoint_dir: "models"
-  output_model: "models/voiceshield_indictts_best.pt"
+  output_model: "models/voiceshield_model.pt"
   config_file: "models/training_config.json"
 
 augmentation:
@@ -59,4 +45,3 @@ augmentation:
     time_mask_param: 6
   channel_distortion:
     enabled: true
-    telephony_simulation: true

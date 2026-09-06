@@ -1,8 +1,8 @@
 """
-VoiceShield CLI Inference Module (IndicTTS)
-===========================================
+VoiceShield CLI Inference Module
+================================
 Performs genuine deepfake inference and segment-level chunk analysis on arbitrary audio files.
-Uses the locally trained VoiceShield IndicTTS model.
+Uses the locally trained VoiceShield model.
 Outputs AI/Human probabilities, voice risk rating, confidence, and temporal timeline.
 """
 
@@ -13,32 +13,30 @@ import argparse
 import numpy as np
 import torch
 from pathlib import Path
+from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from ml.features import AudioFeatureExtractor
+from ml.features import AudioFeatureExtractor, load_audio, is_sufficient_speech
 from ml.model import VoiceShieldNet
 
 MODELS_DIR = BASE_DIR / "models"
-BEST_INDIC_MODEL = MODELS_DIR / "voiceshield_indictts_best.pt"
 DEFAULT_MODEL = MODELS_DIR / "voiceshield_model.pt"
 
 
 class VoiceShieldDetector:
-    """Production inference detector for VoiceShield IndicTTS."""
+    """Production inference detector for VoiceShield."""
 
     def __init__(self, model_path: str = None):
         self.device = torch.device("cpu")  # CPU is optimal and sub-50ms for single-sample inference
         self.feature_extractor = AudioFeatureExtractor()
 
         if model_path is None:
-            if BEST_INDIC_MODEL.exists():
-                model_path = str(BEST_INDIC_MODEL)
-            elif DEFAULT_MODEL.exists():
+            if DEFAULT_MODEL.exists():
                 model_path = str(DEFAULT_MODEL)
             else:
-                raise FileNotFoundError("No trained model weights found in models/. Run ml/training.py first.")
+                raise FileNotFoundError("No trained model weights found at models/voiceshield_model.pt. Run scripts/training.py first.")
 
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model checkpoint not found at: {model_path}")
@@ -49,30 +47,25 @@ class VoiceShieldDetector:
         self.model.to(self.device)
         self.model.eval()
         self.model_path = model_path
-        self.dataset_name = checkpoint.get("dataset_name", "IndicTTS-Deepfake-Challenge-Data")
+        self.dataset_name = checkpoint.get("dataset_name", "Kaggle Fake and Real Audio Dataset")
 
-    def analyze(self, audio_source, apply_vad: bool = True) -> dict:
+    def analyze(self, audio_source, apply_vad: bool = True, filename: Optional[str] = None) -> dict:
         """
         Runs complete inference pipeline:
-        1. Preprocessing & VAD
-        2. Chunk-level sliding window feature extraction
-        3. Neural model forward passes
-        4. Temporal aggregation (mean & peak spoof score)
-        5. Voice risk scoring
+        1. Preprocessing & VAD (supports WAV and MP3 transparently)
+        2. Speech energy / sufficiency verification
+        3. Chunk-level sliding window feature extraction
+        4. Neural model forward passes
+        5. Temporal aggregation (trimmed mean & median)
+        6. Voice risk scoring
         """
-        # Load audio
-        audio, sr = self.feature_extractor.load_audio(audio_source, apply_vad=apply_vad)
+        # Load audio through central loader
+        inferred_name = filename
+        if isinstance(audio_source, str) and not inferred_name:
+            inferred_name = Path(audio_source).name
+
+        audio, sr = load_audio(audio_source, target_sr=self.feature_extractor.sample_rate, apply_vad=apply_vad, filename=inferred_name)
         total_duration = len(audio) / sr
-
-        # Slice into chunks for real-time style timeline analysis
-        segments = self.feature_extractor.segment_audio(audio, overlap=0.5)
-
-        chunk_results = []
-        chunk_tensors = []
-
-        for start_sec, end_sec, chunk_audio in segments:
-            feat = self.feature_extractor.extract_features(chunk_audio)
-            chunk_tensors.append(torch.from_numpy(feat).float())
 
         # Load calibration if available
         cal_temp = 1.0
@@ -88,57 +81,117 @@ class VoiceShieldDetector:
             except Exception:
                 pass
 
-        # Batch forward pass
-        batch_feats = torch.stack(chunk_tensors).to(self.device)
+        # Check for silence or non-speech
+        is_sufficient, active_speech_sec = is_sufficient_speech(audio, sr=sr)
+        if not is_sufficient:
+            return {
+                "model": "VoiceShield Deepfake Detector",
+                "model_path": self.model_path,
+                "duration_sec": round(total_duration, 2),
+                "total_chunks": 0,
+                "ai_generated_probability": 0.0,
+                "human_probability": 0.0,
+                "classification": "INSUFFICIENT_SPEECH",
+                "confidence": 0.0,
+                "voice_risk_score": 0.0,
+                "risk_status": "INSUFFICIENT_SPEECH",
+                "partial_spoof_detected": False,
+                "operating_threshold": opt_thresh,
+                "speech_duration": round(active_speech_sec, 2),
+                "chunk_timeline": []
+            }
+
+        # Slice into chunks for real-time style timeline analysis
+        segments = self.feature_extractor.segment_audio(audio, overlap=0.5)
+
+        if len(segments) == 0:
+            return {
+                "model": "VoiceShield Deepfake Detector",
+                "model_path": self.model_path,
+                "duration_sec": round(total_duration, 2),
+                "total_chunks": 0,
+                "ai_generated_probability": 0.0,
+                "human_probability": 1.0,
+                "classification": "GENUINE HUMAN SPEECH",
+                "confidence": 1.0,
+                "voice_risk_score": 0.0,
+                "risk_status": "LOW RISK",
+                "partial_spoof_detected": False,
+                "operating_threshold": opt_thresh,
+                "speech_duration": round(total_duration, 2),
+                "chunk_timeline": []
+            }
+
+        chunk_results = []
+        chunk_probs = []
+
         with torch.no_grad():
-            logits = self.model(batch_feats)
-            # Apply temperature scaling
-            scaled_logits = logits / max(0.01, cal_temp)
-            ai_probs = torch.sigmoid(scaled_logits).squeeze(-1).tolist()
-            if isinstance(ai_probs, float):
-                ai_probs = [ai_probs]
+            for seg in segments:
+                if isinstance(seg, tuple):
+                    start_sec, end_sec, chunk_audio = seg
+                    time_label = f"{start_sec:.1f}s - {end_sec:.1f}s"
+                elif isinstance(seg, dict):
+                    start_sec = seg["start_sec"]
+                    end_sec = seg["end_sec"]
+                    chunk_audio = seg["audio"]
+                    time_label = seg.get("time_label", f"{start_sec:.1f}s - {end_sec:.1f}s")
+                else:
+                    continue
 
-        for (start_sec, end_sec, _), ai_prob in zip(segments, ai_probs):
-            chunk_risk = "LOW" if ai_prob < 0.4 else ("MEDIUM" if ai_prob <= 0.7 else "HIGH")
-            chunk_results.append({
-                "start_time": round(start_sec, 2),
-                "end_time": round(end_sec, 2),
-                "time_label": f"{start_sec:.1f}s - {end_sec:.1f}s",
-                "ai_probability": round(ai_prob, 4),
-                "human_probability": round(1.0 - ai_prob, 4),
-                "risk_level": chunk_risk
-            })
+                feat = self.feature_extractor.extract_features(chunk_audio, random_crop=False)
+                tensor = torch.from_numpy(feat).unsqueeze(0).to(self.device)
 
-        # Robust statistical aggregation (trimmed mean & median)
-        peak_prob = float(max(ai_probs))
-        mean_prob = float(np.mean(ai_probs))
-        median_prob = float(np.median(ai_probs))
+                raw_logit = self.model(tensor).item()
+                scaled_logit = raw_logit / max(0.01, cal_temp)
+                ai_prob = float(torch.sigmoid(torch.tensor(scaled_logit)).item())
 
-        if len(ai_probs) >= 3:
-            sorted_p = sorted(ai_probs)
-            trimmed_mean = float(np.mean(sorted_p[1:-1]))
+                chunk_probs.append(ai_prob)
+
+                # Segment risk category
+                if ai_prob >= 0.70:
+                    c_risk = "HIGH"
+                elif ai_prob >= 0.40:
+                    c_risk = "MEDIUM"
+                else:
+                    c_risk = "LOW"
+
+                chunk_results.append({
+                    "start_sec": start_sec,
+                    "end_sec": end_sec,
+                    "time_label": time_label,
+                    "ai_probability": round(ai_prob, 4),
+                    "human_probability": round(1.0 - ai_prob, 4),
+                    "risk_level": c_risk
+                })
+
+        # Temporal Aggregation: Trimmed Mean + Median
+        probs_arr = np.array(chunk_probs)
+        if len(probs_arr) >= 4:
+            # 10% trimmed mean removes single outlier burst
+            low_pct = np.percentile(probs_arr, 10)
+            high_pct = np.percentile(probs_arr, 90)
+            trimmed = probs_arr[(probs_arr >= low_pct) & (probs_arr <= high_pct)]
+            aggregated_prob = float(np.mean(trimmed)) if len(trimmed) > 0 else float(np.median(probs_arr))
         else:
-            trimmed_mean = mean_prob
+            aggregated_prob = float(np.mean(probs_arr))
 
-        high_chunks = sum(p >= 0.65 for p in ai_probs)
-        low_chunks = sum(p < 0.40 for p in ai_probs)
-        partial_spoof = (high_chunks >= 2 and low_chunks >= 2)
+        # Check for partial spoofing
+        high_risk_chunks = sum(1 for p in chunk_probs if p >= 0.75)
+        partial_spoof = (high_risk_chunks >= 1 and high_risk_chunks < len(chunk_probs) * 0.7)
 
-        if partial_spoof:
-            p80 = float(np.percentile(ai_probs, 80))
-            global_ai_prob = float(0.60 * p80 + 0.40 * trimmed_mean)
-        else:
-            global_ai_prob = float(0.50 * trimmed_mean + 0.50 * median_prob)
-
+        # Global probability assignment
+        global_ai_prob = max(aggregated_prob, 0.75) if partial_spoof else aggregated_prob
         global_human_prob = 1.0 - global_ai_prob
-        voice_risk_score = round(global_ai_prob * 100.0, 1)
 
-        # Classification based on validation operating threshold
-        if global_ai_prob >= opt_thresh:
-            classification = "SYNTHETIC / AI VOICE CLONE"
-            risk_status = "HIGH RISK" if global_ai_prob >= 0.70 else "MEDIUM RISK"
-        elif global_ai_prob >= 0.40:
-            classification = "SUSPICIOUS / ANOMALOUS SPEECH"
+        # Calibrated voice risk score (0 - 100)
+        voice_risk_score = int(round(global_ai_prob * 100))
+
+        # Classification decision based on calibrated threshold
+        if global_ai_prob >= opt_thresh or partial_spoof:
+            classification = "AI-GENERATED / VOICE CLONE"
+            risk_status = "CRITICAL RISK" if global_ai_prob >= 0.80 else "HIGH RISK"
+        elif global_ai_prob >= (opt_thresh * 0.75):
+            classification = "SUSPICIOUS / INCONCLUSIVE"
             risk_status = "MEDIUM RISK"
         else:
             classification = "GENUINE HUMAN SPEECH"
@@ -147,7 +200,7 @@ class VoiceShieldDetector:
         confidence = round(max(global_ai_prob, global_human_prob), 4)
 
         return {
-            "model": "VoiceShield IndicTTS",
+            "model": "VoiceShield Deepfake Detector",
             "model_path": self.model_path,
             "duration_sec": round(total_duration, 2),
             "total_chunks": len(chunk_results),
@@ -164,13 +217,23 @@ class VoiceShieldDetector:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VoiceShield IndicTTS Deepfake Inference")
-    parser.add_argument("--file", type=str, required=True, help="Path to input audio file (WAV/MP3)")
+    parser = argparse.ArgumentParser(description="VoiceShield Deepfake Inference")
+    parser.add_argument("--file", "-f", "--audio", "-a", dest="file", type=str, required=True, help="Path to input audio file (WAV/MP3)")
     parser.add_argument("--model", type=str, default=None, help="Model checkpoint path")
     parser.add_argument("--json", action="store_true", help="Print JSON output only")
     args = parser.parse_args()
 
     detector = VoiceShieldDetector(model_path=args.model)
+
+    if not args.json:
+        print("=" * 65)
+        print("Initializing VoiceShield Inference Engine...")
+        print(f"  Model Checkpoint : {detector.model_path}")
+        print(f"  Sample Rate      : 16000 Hz (mono float32)")
+        print(f"  Feature Config   : 64-band Log-Mel + Delta + Delta-Delta")
+        print(f"  Class Mapping    : 0 = HUMAN, 1 = AI_GENERATED")
+        print("=" * 65)
+
     results = detector.analyze(args.file)
 
     if args.json:
@@ -178,7 +241,7 @@ def main():
         return
 
     print("=" * 65)
-    print("        VOICESHIELD INDICTTS DEEPFAKE DETECTION RESULT")
+    print("        VOICESHIELD DEEPFAKE DETECTION RESULT")
     print("=" * 65)
     print(f"  Target Audio File       : {args.file}")
     print(f"  Model Engine            : {results['model']}")
@@ -189,11 +252,14 @@ def main():
     print(f"  Model Confidence        : {results['confidence']*100:.1f}%")
     print(f"  Voice Risk Score        : {results['voice_risk_score']} / 100 ({results['risk_status']})")
     print("-" * 65)
-    print("  Segment-Level Timeline:")
-    for chunk in results["chunk_timeline"]:
-        bar_len = int(chunk["ai_probability"] * 20)
-        bar = "█" * bar_len + "░" * (20 - bar_len)
-        print(f"   [{chunk['time_label']:^13}] AI: {chunk['ai_probability']*100:5.1f}% [{bar}] {chunk['risk_level']}")
+    if results["total_chunks"] > 0:
+        print("  Segment-Level Timeline:")
+        for chunk in results["chunk_timeline"]:
+            bar_len = int(chunk["ai_probability"] * 20)
+            bar = "█" * bar_len + "░" * (20 - bar_len)
+            print(f"   [{chunk['time_label']:^13}] AI: {chunk['ai_probability']*100:5.1f}% [{bar}] {chunk['risk_level']}")
+    else:
+        print(f"  Note: {results.get('classification', 'No active speech chunks')}")
     print("=" * 65)
 
 

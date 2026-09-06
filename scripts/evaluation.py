@@ -1,7 +1,8 @@
 """
-VoiceShield Evaluation Script (IndicTTS)
-========================================
-Convenience entrypoint delegating to ml.evaluation
+VoiceShield Evaluation Script
+=============================
+Convenience entrypoint delegating to ml.evaluation.
+Evaluates VoiceShieldNet on the Kaggle Fake and Real Audio held-out test split.
 """
 
 import sys
