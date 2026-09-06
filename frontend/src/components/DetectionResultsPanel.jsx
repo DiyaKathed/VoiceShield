@@ -16,8 +16,8 @@ export default function DetectionResultsPanel({ results }) {
     );
   }
 
-  const isHighRisk = results.voice_risk_score >= 70;
-  const isMedRisk = results.voice_risk_score >= 40 && results.voice_risk_score < 70;
+  const isHighRisk = results.voice_risk_status === 'HIGH RISK' || results.voice_risk_status === 'CRITICAL RISK' || results.voice_risk_score >= 50;
+  const isMedRisk = results.voice_risk_status === 'MEDIUM RISK' || (results.voice_risk_score >= 35 && results.voice_risk_score < 50);
   const alertClass = isHighRisk ? 'alert-high' : (isMedRisk ? 'alert-medium' : 'alert-low');
 
   const aiPct = Math.round(results.ai_generated_probability * 100);

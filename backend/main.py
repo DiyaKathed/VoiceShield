@@ -432,9 +432,10 @@ async def analyze_audio(
         global_ai_prob = float(chunk_analysis.get("aggregated_ai_probability", 0.5))
         global_human_prob = round(1.0 - global_ai_prob, 4)
         confidence = round(max(global_ai_prob, global_human_prob), 4)
+        opt_thresh = float(chunk_analysis.get("operating_threshold", 0.4876))
 
-        # 1. Voice ML Risk Engine
-        voice_risk = VoiceRiskEngine.calculate_voice_risk(global_ai_prob)
+        # 1. Voice ML Risk Engine (strictly calibrated decision boundary)
+        voice_risk = VoiceRiskEngine.calculate_voice_risk(global_ai_prob, threshold=opt_thresh)
 
         # 2. Contextual High-Risk Transaction Engine
         context = TransactionContext(
@@ -444,7 +445,32 @@ async def analyze_audio(
             urgency=urgency or "Immediate",
             speaker_verification=speaker_verification or "Unregistered / Unknown"
         )
-        context_risk = ContextualRiskEngine.evaluate(global_ai_prob, context)
+        context_risk = ContextualRiskEngine.evaluate(global_ai_prob, context, threshold=opt_thresh)
+
+        # Terminal-level diagnostic logging
+        raw_logits = chunk_analysis.get("raw_logits", [])
+        min_logit = min(raw_logits) if raw_logits else 0.0
+        max_logit = max(raw_logits) if raw_logits else 0.0
+        c_probs = [c["ai_probability"] for c in chunk_analysis.get("chunks", [])]
+        min_cp = min(c_probs) if c_probs else 0.0
+        max_cp = max(c_probs) if c_probs else 0.0
+
+        print("\n" + "=" * 70, flush=True)
+        print(f"[VoiceShield Inference Diagnostics]", flush=True)
+        print(f"Audio Source       : {filename} ({'Microphone Recording' if is_mic else 'File Upload'})", flush=True)
+        print(f"Sample Rate        : {sr} Hz | Channels: 1 (Mono Float32)", flush=True)
+        print(f"Duration           : {chunk_analysis['total_duration']:.2f}s (Speech: {chunk_analysis.get('speech_duration', chunk_analysis['total_duration']):.2f}s)", flush=True)
+        print(f"Waveform Shape     : {audio.shape} | Peak: {float(np.max(np.abs(audio))):.4f} | RMS: {float(np.sqrt(np.mean(audio**2))):.4f}", flush=True)
+        print(f"Total Chunks       : {chunk_analysis['total_chunks']}", flush=True)
+        print(f"Raw Model Logits   : [{min_logit:.4f}, {max_logit:.4f}]", flush=True)
+        print(f"Chunk AI Probs     : [{min_cp:.4f}, {max_cp:.4f}]", flush=True)
+        print(f"Aggregated AI Prob : {global_ai_prob:.4f} ({global_ai_prob * 100:.1f}%)", flush=True)
+        print(f"Aggregated Human   : {global_human_prob:.4f} ({global_human_prob * 100:.1f}%)", flush=True)
+        print(f"Operating Threshold: {opt_thresh:.4f}", flush=True)
+        print(f"Repeated AI Clones : {chunk_analysis.get('has_repeated_ai', False)}", flush=True)
+        print(f"Partial Spoof Flag : {chunk_analysis.get('partial_spoof_detected', False)}", flush=True)
+        print(f"Final Classification: {voice_risk['classification']} [{voice_risk['status']}]", flush=True)
+        print("=" * 70 + "\n", flush=True)
 
         # Segments formatted for both timeline display and Section 18 spec
         segments_list = [
@@ -453,7 +479,7 @@ async def analyze_audio(
                 "end": round(c["end_time"], 2),
                 "ai_probability": round(c["ai_probability"], 4),
                 "human_probability": round(c["human_probability"], 4),
-                "classification": c.get("classification", "AI_GENERATED" if c["ai_probability"] >= 0.5 else "HUMAN")
+                "classification": c.get("classification", "AI_GENERATED" if c["ai_probability"] >= opt_thresh else "HUMAN")
             }
             for c in chunk_analysis["chunks"]
         ]
@@ -464,6 +490,7 @@ async def analyze_audio(
             "duration_sec": chunk_analysis["total_duration"],
             "total_chunks": chunk_analysis["total_chunks"],
             "partial_spoof_detected": chunk_analysis["partial_spoof_detected"],
+            "operating_threshold": opt_thresh,
             # Section 18 Spec Format
             "voice_analysis": {
                 "ai_probability": round(global_ai_prob, 4),
@@ -471,7 +498,8 @@ async def analyze_audio(
                 "classification": voice_risk["classification"],
                 "confidence": confidence,
                 "risk_score": voice_risk["voice_risk_score"],
-                "risk_level": voice_risk["status"]
+                "risk_level": voice_risk["status"],
+                "operating_threshold": opt_thresh
             },
             "segments": segments_list,
             "audio": {
@@ -481,6 +509,7 @@ async def analyze_audio(
             },
             "recommendation": context_risk["recommended_action"],
             # React Frontend Direct Format
+            "ai_probability": round(global_ai_prob, 4),
             "ai_generated_probability": round(global_ai_prob, 4),
             "human_probability": round(global_human_prob, 4),
             "classification": voice_risk["classification"],
@@ -506,7 +535,9 @@ async def analyze_audio(
                 "median_ai_probability": chunk_analysis.get("median_ai_probability", 0.0),
                 "trimmed_mean_ai_probability": chunk_analysis.get("trimmed_mean_ai_probability", 0.0),
                 "aggregated_ai_probability": round(global_ai_prob, 4),
-                "partial_spoof_detected": chunk_analysis["partial_spoof_detected"]
+                "partial_spoof_detected": chunk_analysis["partial_spoof_detected"],
+                "has_repeated_ai": chunk_analysis.get("has_repeated_ai", False),
+                "operating_threshold": opt_thresh
             }
         }
 

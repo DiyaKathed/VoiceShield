@@ -26,28 +26,33 @@ class VoiceRiskEngine:
     """Computes pure acoustic risk based on model probability."""
 
     @staticmethod
-    def calculate_voice_risk(ai_probability: float) -> Dict[str, Any]:
+    def calculate_voice_risk(ai_probability: float, threshold: float = 0.4876) -> Dict[str, Any]:
         score = round(ai_probability * 100.0, 1)
+        thresh_score = threshold * 100.0
 
-        if score < 40.0:
-            classification = "GENUINE HUMAN SPEECH"
-            status = "LOW RISK"
-            color = "#10B981"  # Emerald green
-        elif score <= 70.0:
+        if ai_probability >= threshold:
+            classification = "SYNTHETIC / AI VOICE CLONE"
+            status = "CRITICAL RISK" if score >= 80.0 else "HIGH RISK"
+            color = "#EF4444"  # Red threat
+            is_threat = True
+        elif ai_probability >= (threshold * 0.75):
             classification = "SUSPICIOUS / ANOMALOUS SPEECH"
             status = "MEDIUM RISK"
             color = "#F59E0B"  # Amber warning
+            is_threat = False
         else:
-            classification = "SYNTHETIC / AI VOICE CLONE"
-            status = "HIGH RISK"
-            color = "#EF4444"  # Red threat
+            classification = "GENUINE HUMAN SPEECH"
+            status = "LOW RISK"
+            color = "#10B981"  # Emerald green
+            is_threat = False
 
         return {
             "voice_risk_score": score,
             "status": status,
             "classification": classification,
             "color": color,
-            "is_threat": score >= 70.0
+            "is_threat": is_threat,
+            "operating_threshold": round(threshold, 4)
         }
 
 
@@ -62,12 +67,17 @@ class ContextualRiskEngine:
     """
 
     @staticmethod
-    def evaluate(ai_probability: float, context: Optional[TransactionContext] = None) -> Dict[str, Any]:
+    def evaluate(
+        ai_probability: float,
+        context: Optional[TransactionContext] = None,
+        threshold: float = 0.4876
+    ) -> Dict[str, Any]:
         if context is None:
             context = TransactionContext()
 
         # 1. Voice ML Component (0 - 100)
         voice_risk = ai_probability * 100.0
+        thresh_score = threshold * 100.0
 
         # 2. Financial Amount Weight (0 - 100)
         amt = context.amount
@@ -122,8 +132,8 @@ class ContextualRiskEngine:
         )
         contextual_score = round(min(100.0, max(0.0, contextual_score)), 1)
 
-        # Generate Security Alert & Recommended Actions
-        if contextual_score >= 70.0 or voice_risk >= 70.0:
+        # Generate Security Alert & Recommended Actions based on calibrated threshold
+        if contextual_score >= 70.0 or voice_risk >= thresh_score:
             threat_level = "CRITICAL / SEVERE THREAT"
             security_alert = (
                 f"HIGH RISK ALERT: Potential AI voice cloning attack detected impersonating '{context.caller_name}' "
@@ -135,7 +145,7 @@ class ContextualRiskEngine:
                 "or physical security token."
             )
             action_code = "HALT_AND_VERIFY"
-        elif contextual_score >= 40.0 or voice_risk >= 40.0:
+        elif contextual_score >= 40.0 or voice_risk >= (thresh_score * 0.75):
             threat_level = "ELEVATED CAUTION"
             security_alert = (
                 f"ADVISORY: Anomalous speech characteristics detected for '{context.caller_name}'. "

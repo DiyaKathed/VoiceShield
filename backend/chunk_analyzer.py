@@ -111,42 +111,34 @@ class RealTimeChunkAnalyzer:
         active_speech_probs = []
 
         for (start_sec, end_sec, chunk_arr), ai_prob in zip(segments, probs):
-            if is_live_recording:
-                chunk_rms = float(np.sqrt(np.mean(chunk_arr**2)))
-                chunk_peak = float(np.max(np.abs(chunk_arr)))
-                # A chunk is unvoiced room silence if both RMS and peak are low
-                is_silence_chunk = (chunk_rms < 0.012 and chunk_peak < 0.035)
-                if is_silence_chunk:
-                    ai_prob_clamped = 0.0
-                    human_prob = 1.0
-                    risk_level = "LOW"
-                    low_risk_chunks += 1
-                    classification = "SILENCE / PAUSE"
-                else:
-                    ai_prob_clamped = max(0.0, min(1.0, float(ai_prob)))
-                    human_prob = 1.0 - ai_prob_clamped
-                    active_speech_probs.append(ai_prob_clamped)
-                    if ai_prob_clamped < 0.40:
-                        risk_level = "LOW"
-                        low_risk_chunks += 1
-                    elif ai_prob_clamped <= 0.70:
-                        risk_level = "MEDIUM"
-                    else:
-                        risk_level = "HIGH"
-                        high_risk_chunks += 1
-                    classification = "AI_GENERATED" if ai_prob_clamped >= self.threshold else "HUMAN"
+            chunk_rms = float(np.sqrt(np.mean(chunk_arr**2)))
+            chunk_peak = float(np.max(np.abs(chunk_arr)))
+
+            # Detect unvoiced room silence / pauses (applies uniformly to all audio)
+            is_silence_chunk = (chunk_rms < 0.015 and chunk_peak < 0.050)
+
+            if is_silence_chunk:
+                ai_prob_clamped = 0.0
+                human_prob = 1.0
+                risk_level = "LOW"
+                low_risk_chunks += 1
+                classification = "SILENCE / PAUSE"
             else:
                 ai_prob_clamped = max(0.0, min(1.0, float(ai_prob)))
                 human_prob = 1.0 - ai_prob_clamped
-                if ai_prob_clamped < 0.40:
-                    risk_level = "LOW"
-                    low_risk_chunks += 1
-                elif ai_prob_clamped <= 0.70:
-                    risk_level = "MEDIUM"
-                else:
+                active_speech_probs.append(ai_prob_clamped)
+
+                if ai_prob_clamped >= self.threshold:
                     risk_level = "HIGH"
                     high_risk_chunks += 1
-                classification = "AI_GENERATED" if ai_prob_clamped >= self.threshold else "HUMAN"
+                    classification = "AI_GENERATED"
+                elif ai_prob_clamped >= (self.threshold * 0.75):
+                    risk_level = "MEDIUM"
+                    classification = "SUSPICIOUS"
+                else:
+                    risk_level = "LOW"
+                    low_risk_chunks += 1
+                    classification = "HUMAN"
 
             chunks_data.append({
                 "chunk_id": len(chunks_data) + 1,
@@ -157,11 +149,11 @@ class RealTimeChunkAnalyzer:
                 "human_probability": round(human_prob, 4),
                 "risk_level": risk_level,
                 "classification": classification,
-                "is_suspicious": ai_prob_clamped >= 0.60
+                "is_suspicious": ai_prob_clamped >= self.threshold
             })
 
-        # Aggregation selection: for live microphone recordings, aggregate over active speech
-        eval_probs = active_speech_probs if (is_live_recording and len(active_speech_probs) > 0) else probs
+        # Aggregation selection: aggregate across active speech intervals
+        eval_probs = active_speech_probs if len(active_speech_probs) > 0 else [float(p) for p in probs]
 
         peak_prob = float(max(eval_probs))
         min_prob = float(min(eval_probs))
@@ -169,34 +161,45 @@ class RealTimeChunkAnalyzer:
         median_prob = float(np.median(eval_probs))
         p80_prob = float(np.percentile(eval_probs, 80))
 
-        # Trimmed mean: drop top & bottom outliers if 3+ chunks
+        # Check for repeated AI predictions
+        ai_chunks = [p for p in eval_probs if p >= self.threshold]
+        num_ai = len(ai_chunks)
+
+        consecutive_ai = 0
+        max_consecutive_ai = 0
+        for p in eval_probs:
+            if p >= self.threshold:
+                consecutive_ai += 1
+                max_consecutive_ai = max(max_consecutive_ai, consecutive_ai)
+            else:
+                consecutive_ai = 0
+
+        has_repeated_ai = (max_consecutive_ai >= 2) or (num_ai >= 2 and num_ai >= len(eval_probs) * 0.35)
+        partial_spoof_detected = bool(has_repeated_ai and any(p < (self.threshold * 0.70) for p in eval_probs) and len(eval_probs) >= 3)
+
+        # Robust aggregation:
+        # 1. When repeated AI predictions are detected: synthetic content dominates
+        #    so quiet breaths or trailing pauses do not dilute the clone alarm.
+        # 2. When a single isolated spike occurs in human speech: outlier is suppressed.
+        # 3. Otherwise: balanced mean/median aggregation.
+        if has_repeated_ai:
+            top_ai_mean = float(np.mean(sorted(ai_chunks, reverse=True)[:max(2, len(ai_chunks))]))
+            aggregated_ai_prob = float(0.60 * top_ai_mean + 0.25 * p80_prob + 0.15 * mean_prob)
+        elif num_ai == 1 and len(eval_probs) >= 3:
+            sorted_p = sorted(eval_probs)
+            trimmed = sorted_p[:-1]
+            aggregated_ai_prob = float(0.60 * np.mean(trimmed) + 0.40 * median_prob)
+        else:
+            aggregated_ai_prob = float(0.50 * mean_prob + 0.50 * median_prob)
+
+        aggregated_ai_prob = float(np.clip(aggregated_ai_prob, 0.0, 1.0))
+
+        # Trimmed mean for diagnostic reference
         if len(eval_probs) >= 3:
             sorted_p = sorted(eval_probs)
             trimmed_mean = float(np.mean(sorted_p[1:-1]))
         else:
             trimmed_mean = mean_prob
-
-        # Contiguous high-risk chunk count for partial spoofing detection
-        consecutive_high = 0
-        max_consecutive_high = 0
-        for p in eval_probs:
-            if p >= 0.65:
-                consecutive_high += 1
-                max_consecutive_high = max(max_consecutive_high, consecutive_high)
-            else:
-                consecutive_high = 0
-
-        # Partial spoofing requires meaningful sustained synthetic content (>= 3 consecutive chunks or >= 35% of chunks)
-        partial_spoof_detected = (
-            (max_consecutive_high >= 3 and low_risk_chunks >= 2) or
-            (high_risk_chunks >= max(3, int(len(eval_probs) * 0.35)) and low_risk_chunks >= 2)
-        )
-
-        # Robust recording-level aggregation:
-        if partial_spoof_detected:
-            aggregated_ai_prob = float(0.60 * p80_prob + 0.40 * trimmed_mean)
-        else:
-            aggregated_ai_prob = float(0.50 * trimmed_mean + 0.50 * median_prob)
 
         return {
             "total_duration": round(duration, 2),
@@ -210,9 +213,12 @@ class RealTimeChunkAnalyzer:
             "aggregated_ai_probability": round(aggregated_ai_prob, 4),
             "high_risk_chunk_count": high_risk_chunks,
             "low_risk_chunk_count": low_risk_chunks,
+            "has_repeated_ai": has_repeated_ai,
             "partial_spoof_detected": partial_spoof_detected,
             "is_insufficient_speech": False,
-            "speech_duration": round(active_speech_sec, 2)
+            "speech_duration": round(active_speech_sec, 2),
+            "operating_threshold": round(self.threshold, 4),
+            "raw_logits": [round(float(l), 4) for l in logits.cpu().numpy().flatten()]
         }
 
 

@@ -189,8 +189,11 @@ def load_audio(
         except Exception:
             pass
 
-    # Step 4: Amplitude Peak Normalization (consistent dynamic scale)
-    peak = np.max(np.abs(audio))
+    # Step 4: DC-Offset Removal & Amplitude Peak Normalization (consistent dynamic scale)
+    # Removing DC offset ensures microphone bias does not create artificial 0Hz energy
+    if len(audio) > 0:
+        audio = audio - float(np.mean(audio))
+    peak = float(np.max(np.abs(audio))) if len(audio) > 0 else 0.0
     if peak > 1e-6:
         audio = audio / peak * 0.95
 

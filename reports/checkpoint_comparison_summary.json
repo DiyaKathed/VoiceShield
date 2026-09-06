@@ -1,0 +1,46 @@
+{
+  "old_checkpoint": {
+    "ai_recall": 0.8260869565217391,
+    "ai_precision": 0.8636363636363636,
+    "human_recall": 0.8461538461538461,
+    "f1": 0.8444444444444444,
+    "ai_fnr": 0.17391304347826086,
+    "human_fpr": 0.15384615384615385,
+    "clone_recall": 0.4583333333333333,
+    "tts_recall": 0.9558823529411765,
+    "cm": [
+      66,
+      12,
+      16,
+      76
+    ],
+    "total_clones": 24,
+    "correct_clones": 11,
+    "total_human": 78,
+    "correct_human": 66,
+    "total_ai": 92,
+    "correct_ai": 76
+  },
+  "new_checkpoint": {
+    "ai_recall": 0.8586956521739131,
+    "ai_precision": 0.8404255319148937,
+    "human_recall": 0.8076923076923077,
+    "f1": 0.8494623655913979,
+    "ai_fnr": 0.14130434782608695,
+    "human_fpr": 0.19230769230769232,
+    "clone_recall": 0.5,
+    "tts_recall": 0.9852941176470589,
+    "cm": [
+      63,
+      15,
+      13,
+      79
+    ],
+    "total_clones": 24,
+    "correct_clones": 12,
+    "total_human": 78,
+    "correct_human": 63,
+    "total_ai": 92,
+    "correct_ai": 79
+  }
+}

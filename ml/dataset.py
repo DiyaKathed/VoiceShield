@@ -26,13 +26,17 @@ from ml.features import AudioFeatureExtractor, TARGET_SR, CHUNK_SAMPLES
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+import scipy.signal
+
 class AudioDataAugmenter:
     """
     Audio & feature augmentation for deepfake detection robustness.
     Simulates:
     - Additive Gaussian noise (varying SNR)
-    - SpecAugment (frequency and time masking across mel channels)
-    - Telephony bandpass & channel distortion
+    - Microphone frequency response & telephony lowpass filtering (3.4kHz - 7kHz)
+    - Room acoustic reflections / reverberation
+    - Dynamic range compression & codec quantization
+    - 2D SpecAugment (frequency and time masking across mel channels)
     """
 
     def __init__(
@@ -42,7 +46,8 @@ class AudioDataAugmenter:
         noise_level: float = 0.005,
         freq_mask_param: int = 8,
         time_mask_param: int = 6,
-        telephony_simulation: bool = True
+        telephony_simulation: bool = True,
+        reverb_simulation: bool = True
     ):
         self.apply_noise = apply_noise
         self.apply_masking = apply_masking
@@ -50,20 +55,39 @@ class AudioDataAugmenter:
         self.freq_mask_param = freq_mask_param
         self.time_mask_param = time_mask_param
         self.telephony_simulation = telephony_simulation
+        self.reverb_simulation = reverb_simulation
 
     def augment_raw_audio(self, audio: np.ndarray) -> np.ndarray:
-        """Applies raw audio augmentations."""
+        """Applies raw audio augmentations including mic frequency roll-off and room acoustics."""
         out = audio.copy()
-        # Additive noise
+        
+        # 1. Additive Gaussian noise (varying background room noise)
         if self.apply_noise and np.random.rand() > 0.5:
-            noise = np.random.randn(*out.shape) * self.noise_level
-            out = out + noise
+            noise = np.random.randn(*out.shape) * np.random.uniform(0.001, self.noise_level)
+            out = out + noise.astype(np.float32)
 
-        # Telephony bandpass simulation
-        if self.telephony_simulation and np.random.rand() > 0.6:
-            out = np.clip(out * np.random.uniform(0.85, 1.15), -1.0, 1.0)
+        # 2. Microphone / Telephony / Codec bandpass filtering (removes clean studio bias)
+        if self.telephony_simulation and np.random.rand() > 0.4 and len(out) > 256:
+            try:
+                cutoff = np.random.choice([3400.0, 4000.0, 5000.0, 6500.0])
+                sos = scipy.signal.butter(4, cutoff, btype='low', fs=16000, output='sos')
+                out = scipy.signal.sosfilt(sos, out).astype(np.float32)
+            except Exception:
+                pass
 
-        return out
+        # 3. Room acoustic reflection / mild reverberation simulation
+        if self.reverb_simulation and np.random.rand() > 0.5 and len(out) > 800:
+            delay = np.random.randint(160, 480)  # 10ms - 30ms reflection
+            decay = np.random.uniform(0.08, 0.22)
+            reflected = out.copy()
+            reflected[delay:] += decay * out[:-delay]
+            out = reflected
+
+        # 4. Gain fluctuation & peak protection
+        gain = np.random.uniform(0.85, 1.15)
+        out = np.clip(out * gain, -1.0, 1.0)
+
+        return out.astype(np.float32)
 
     def augment_features(self, features: np.ndarray) -> np.ndarray:
         """

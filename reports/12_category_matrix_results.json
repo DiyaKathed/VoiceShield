@@ -1,0 +1,271 @@
+{
+  "optimal_threshold_new": 0.45,
+  "baseline_model": {
+    "A. Genuine HUMAN": {
+      "samples": 70,
+      "correct": 60,
+      "incorrect": 10,
+      "ai_recall": null,
+      "human_recall": 0.8571428571428571,
+      "fpr": 0.14285714285714285,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.2059,
+      "median_ai_prob": 0.106
+    },
+    "B. AI / TTS": {
+      "samples": 69,
+      "correct": 68,
+      "incorrect": 1,
+      "ai_recall": 0.9855072463768116,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.014492753623188406,
+      "mean_ai_prob": 0.8943,
+      "median_ai_prob": 0.9076
+    },
+    "C. AI Voice Clone": {
+      "samples": 15,
+      "correct": 9,
+      "incorrect": 6,
+      "ai_recall": 0.6,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.4,
+      "mean_ai_prob": 0.5236,
+      "median_ai_prob": 0.7345
+    },
+    "D. Noisy HUMAN": {
+      "samples": 3,
+      "correct": 2,
+      "incorrect": 1,
+      "ai_recall": null,
+      "human_recall": 0.6666666666666666,
+      "fpr": 0.3333333333333333,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.2974,
+      "median_ai_prob": 0.1512
+    },
+    "E. Compressed HUMAN": {
+      "samples": 2,
+      "correct": 2,
+      "incorrect": 0,
+      "ai_recall": null,
+      "human_recall": 1.0,
+      "fpr": 0.0,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.027,
+      "median_ai_prob": 0.027
+    },
+    "F. Microphone HUMAN": {
+      "samples": 2,
+      "correct": 1,
+      "incorrect": 1,
+      "ai_recall": null,
+      "human_recall": 0.5,
+      "fpr": 0.5,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.5014,
+      "median_ai_prob": 0.5014
+    },
+    "G. Noisy AI": {
+      "samples": 3,
+      "correct": 1,
+      "incorrect": 2,
+      "ai_recall": 0.3333333333333333,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.6666666666666666,
+      "mean_ai_prob": 0.2637,
+      "median_ai_prob": 0.1068
+    },
+    "H. Compressed AI": {
+      "samples": 2,
+      "correct": 0,
+      "incorrect": 2,
+      "ai_recall": 0.0,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 1.0,
+      "mean_ai_prob": 0.0267,
+      "median_ai_prob": 0.0267
+    },
+    "I. Microphone AI": {
+      "samples": 2,
+      "correct": 1,
+      "incorrect": 1,
+      "ai_recall": 0.5,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.5,
+      "mean_ai_prob": 0.4786,
+      "median_ai_prob": 0.4786
+    },
+    "J. AI Clone + Microphone": {
+      "samples": 20,
+      "correct": 7,
+      "incorrect": 13,
+      "ai_recall": 0.35,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.65,
+      "mean_ai_prob": 0.329,
+      "median_ai_prob": 0.0698
+    },
+    "K. AI Clone + Compression": {
+      "samples": 20,
+      "correct": 7,
+      "incorrect": 13,
+      "ai_recall": 0.35,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.65,
+      "mean_ai_prob": 0.329,
+      "median_ai_prob": 0.0698
+    },
+    "L. AI Clone + Noise/Reverb": {
+      "samples": 6,
+      "correct": 2,
+      "incorrect": 4,
+      "ai_recall": 0.3333333333333333,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.6666666666666666,
+      "mean_ai_prob": 0.3552,
+      "median_ai_prob": 0.303
+    }
+  },
+  "finetuned_model": {
+    "A. Genuine HUMAN": {
+      "samples": 70,
+      "correct": 58,
+      "incorrect": 12,
+      "ai_recall": null,
+      "human_recall": 0.8285714285714286,
+      "fpr": 0.17142857142857143,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.2613,
+      "median_ai_prob": 0.1786
+    },
+    "B. AI / TTS": {
+      "samples": 69,
+      "correct": 68,
+      "incorrect": 1,
+      "ai_recall": 0.9855072463768116,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.014492753623188406,
+      "mean_ai_prob": 0.8371,
+      "median_ai_prob": 0.8461
+    },
+    "C. AI Voice Clone": {
+      "samples": 15,
+      "correct": 9,
+      "incorrect": 6,
+      "ai_recall": 0.6,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.4,
+      "mean_ai_prob": 0.5414,
+      "median_ai_prob": 0.7234
+    },
+    "D. Noisy HUMAN": {
+      "samples": 3,
+      "correct": 2,
+      "incorrect": 1,
+      "ai_recall": null,
+      "human_recall": 0.6666666666666666,
+      "fpr": 0.3333333333333333,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.3585,
+      "median_ai_prob": 0.2989
+    },
+    "E. Compressed HUMAN": {
+      "samples": 2,
+      "correct": 2,
+      "incorrect": 0,
+      "ai_recall": null,
+      "human_recall": 1.0,
+      "fpr": 0.0,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.2551,
+      "median_ai_prob": 0.2551
+    },
+    "F. Microphone HUMAN": {
+      "samples": 2,
+      "correct": 1,
+      "incorrect": 1,
+      "ai_recall": null,
+      "human_recall": 0.5,
+      "fpr": 0.5,
+      "fnr": 0.0,
+      "mean_ai_prob": 0.5112,
+      "median_ai_prob": 0.5112
+    },
+    "G. Noisy AI": {
+      "samples": 3,
+      "correct": 1,
+      "incorrect": 2,
+      "ai_recall": 0.3333333333333333,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.6666666666666666,
+      "mean_ai_prob": 0.3196,
+      "median_ai_prob": 0.2231
+    },
+    "H. Compressed AI": {
+      "samples": 2,
+      "correct": 0,
+      "incorrect": 2,
+      "ai_recall": 0.0,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 1.0,
+      "mean_ai_prob": 0.2605,
+      "median_ai_prob": 0.2605
+    },
+    "I. Microphone AI": {
+      "samples": 2,
+      "correct": 1,
+      "incorrect": 1,
+      "ai_recall": 0.5,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.5,
+      "mean_ai_prob": 0.4911,
+      "median_ai_prob": 0.4911
+    },
+    "J. AI Clone + Microphone": {
+      "samples": 20,
+      "correct": 8,
+      "incorrect": 12,
+      "ai_recall": 0.4,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.6,
+      "mean_ai_prob": 0.3881,
+      "median_ai_prob": 0.2395
+    },
+    "K. AI Clone + Compression": {
+      "samples": 20,
+      "correct": 8,
+      "incorrect": 12,
+      "ai_recall": 0.4,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.6,
+      "mean_ai_prob": 0.3881,
+      "median_ai_prob": 0.2395
+    },
+    "L. AI Clone + Noise/Reverb": {
+      "samples": 6,
+      "correct": 3,
+      "incorrect": 3,
+      "ai_recall": 0.5,
+      "human_recall": null,
+      "fpr": 0.0,
+      "fnr": 0.5,
+      "mean_ai_prob": 0.3974,
+      "median_ai_prob": 0.4156
+    }
+  }
+}

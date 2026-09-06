@@ -33,8 +33,10 @@ export default function AnalysisDashboardStage({
   const humanPct = Math.round(humanProb * 100);
 
   const voiceRisk = results.voice_risk_score ?? (results.voice_analysis?.risk_score ?? Math.round(aiProb * 100));
-  const isHighRisk = voiceRisk >= 70 && !isInsufficient;
-  const isMedRisk = voiceRisk >= 40 && voiceRisk < 70 && !isInsufficient;
+  const optThresh = results.operating_threshold ?? (results.voice_analysis?.operating_threshold ?? 0.4876);
+  const isAiPredicted = aiProb >= optThresh;
+  const isHighRisk = (results.voice_risk_status === 'HIGH RISK' || results.voice_risk_status === 'CRITICAL RISK' || isAiPredicted) && !isInsufficient;
+  const isMedRisk = (results.voice_risk_status === 'MEDIUM RISK' || (aiProb >= optThresh * 0.75 && aiProb < optThresh)) && !isHighRisk && !isInsufficient;
   const riskStatus = isInsufficient ? "INSUFFICIENT SPEECH" : (results.voice_risk_status || (results.voice_analysis?.risk_level || (isHighRisk ? "HIGH RISK" : isMedRisk ? "MEDIUM RISK" : "LOW RISK")));
   const riskClass = isInsufficient ? 'risk-med' : (isHighRisk ? 'risk-high' : (isMedRisk ? 'risk-med' : 'risk-low'));
 
@@ -52,19 +54,19 @@ export default function AnalysisDashboardStage({
   // Dynamic Security Alert & Action Recommendation based on real model output
   const securityAlert = isInsufficient
     ? (results.security_alert || "Insufficient speech detected for reliable analysis. The audio recording contains too little voiced speech to evaluate.")
-    : (isHighRisk
+    : (results.security_alert || (isHighRisk
       ? "Possible AI-generated or voice-cloned speech detected."
       : isMedRisk
         ? "Anomalous or degraded spectral signatures detected in voice recording."
-        : "No strong evidence of AI-generated speech was detected. Continue to follow normal verification procedures.");
+        : "No strong evidence of AI-generated speech was detected. Continue to follow normal verification procedures."));
 
   const recommendedAction = isInsufficient
     ? (results.recommended_action || "Ensure microphone is active and audio contains audible spoken words before re-analyzing.")
-    : (isHighRisk
+    : (results.recommended_action || (isHighRisk
       ? "Verify the caller through an independent communication channel before authorizing sensitive actions."
       : isMedRisk
         ? "Request additional biometric verification or secondary supervisor approval before authorization."
-        : "Permit transaction processing under standard operational oversight protocols.");
+        : "Permit transaction processing under standard operational oversight protocols."));
 
   const detectedFormat = results.audio?.format
     ? results.audio.format.toUpperCase()
